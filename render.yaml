@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: mybet-backend
+    env: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && node server.js
+    envVars:
+      - key: DATABASE_URL
+        scope: all
+      - key: DATABASE_USER
+        scope: all
+      - key: DATABASE_PASSWORD
+        scope: all
+      - key: DATABASE_NAME
+        scope: all
+      - key: DATABASE_HOST
+        scope: all
+      - key: DATABASE_PORT
+        scope: all
+      - key: DATABASE_SSL
+        scope: all
+      - key: JWT_SECRET
+        scope: all
+      - key: ADMIN_JWT_SECRET
+        scope: all
+      - key: ADMIN_USERNAME
+        scope: all
+      - key: ADMIN_PASSWORD
+        scope: all
+      - key: API_PORT
+        value: "3001"
+        scope: all
+      - key: NODE_ENV
+        value: production
+        scope: all
+      - key: CORS_ORIGIN
+        scope: all
+
+  - type: static
+    name: mybet-frontend
+    staticPublishPath: ./dist
+    buildCommand: npm install && npm run build
+    envVars:
+      - key: VITE_API_BASE_URL
+        scope: all
+      - key: VITE_PUBLIC_SITE_URL
+        scope: all

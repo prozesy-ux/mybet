@@ -1,0 +1,105 @@
+BETWIN ADMIN PANEL - PHASE COMPLETE PLAN (500 FEATURES)
+
+Status:
+- Core backend admin APIs implemented for users, bets, billing, payments, content, providers, seo, settings, risk, bonuses.
+- Left-sidebar professional admin UX implemented at /admin9x5.
+- Supabase PostgreSQL connected and live CRUD verified.
+
+Module Roadmap (500 features total):
+
+1) Dashboard and KPIs (40)
+- Multi-KPI cards
+- Live refresh
+- Segment stats
+- Conversion, retention, ARPU, LTV
+- Revenue and exposure snapshots
+
+2) User Operations (55)
+- Create, update, status control
+- Balance adjustment
+- KYC and verification states
+- Wallet and session controls
+- User tags and segmentation
+
+3) Bet Operations (50)
+- Bet listing and filtering
+- Settlement tools
+- Void/cancel/rollback controls
+- Odds risk checks
+- Bet audit tracking
+
+4) Billing and Transactions (60)
+- Deposit and withdrawal queues
+- Approve/reject workflow
+- Reconciliation helpers
+- Fee and tax controls
+- Transaction metadata pipelines
+
+5) Payment Methods (45)
+- Deposit methods
+- Withdrawal methods
+- Method type and limits
+- Fee rules
+- Activation toggles
+
+6) Content CMS (45)
+- Home/Sports/Casino sections
+- Item CRUD and ordering
+- Visibility states
+- URL and image mapping
+- Campaign slots
+
+7) Game Provider API Hub (50)
+- Provider registry
+- API endpoint/key config
+- Section mapping
+- Connection tests
+- Sync status tracking
+
+8) SEO Management (35)
+- Page-level SEO fields
+- Index/noindex toggles
+- OG metadata
+- Meta templates
+- Search optimization workflows
+
+9) Site Customization (40)
+- Key/value config store
+- Theme and brand options
+- Banner and CTA text controls
+- Feature toggles
+- Runtime behavior flags
+
+10) Risk and Fraud (40)
+- High odds monitoring
+- Suspicious account signals
+- Exposure dashboards
+- Blocked-user anomaly checks
+- Alert thresholds
+
+11) Bonus and Promotions Admin (40)
+- Bonus creation and assignment
+- Expiry and usage tracking
+- Campaign-level metrics
+- Reward rules
+- Lifecycle controls
+
+Implementation Phases:
+- Phase 1: Foundation and security
+- Phase 2: Core operations (users/bets/billing)
+- Phase 3: Content + providers + seo + settings
+- Phase 4: Risk + automation + audit and roles
+- Phase 5: Scale, analytics, and optimization
+
+Current Completion:
+- Foundation complete
+- Core operations complete
+- CMS/Provider/SEO/Settings baseline complete
+- Advanced risk and automation partially complete (next phase)
+
+Next Build Priorities:
+1. Role-based access (super admin / finance / risk / support)
+2. Audit log for every admin action
+3. 2FA for admin login
+4. Advanced reports and chart widgets
+5. Bulk import/export for content and payments

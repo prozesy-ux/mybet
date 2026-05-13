@@ -1,0 +1,2830 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { getClient, query } from './db.js';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.API_PORT || 3001;
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors(corsOrigins.length > 0 ? { origin: corsOrigins } : undefined));
+app.use(express.json());
+
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || 'change-me-admin-secret';
+const USER_JWT_SECRET = process.env.USER_JWT_SECRET || process.env.JWT_SECRET || 'change-me-user-secret';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@12345';
+
+const normalizeEmail = (value) => (value ? String(value).trim().toLowerCase() : null);
+const normalizePhone = (value) => (value ? String(value).trim() : null);
+const SEAMLESS_COMPANY_KEY = process.env.SEAMLESS_COMPANY_KEY || 'SWKEY-REAL-0513';
+const seamlessState = new Map();
+
+const getBodyValue = (payload, ...candidates) => {
+  if (!payload || typeof payload !== 'object') {
+    return undefined;
+  }
+
+  const keyMap = new Map(Object.keys(payload).map((key) => [key.toLowerCase(), key]));
+  for (const candidate of candidates) {
+    const found = keyMap.get(String(candidate).toLowerCase());
+    if (found) {
+      return payload[found];
+    }
+  }
+
+  return undefined;
+};
+
+const formatBalance = (value) => Number(value || 0).toFixed(5);
+
+const seamlessResponse = (overrides = {}) => ({
+  AccountName: String(overrides.AccountName || ''),
+  Balance: formatBalance(overrides.Balance || 0),
+  ErrorCode: String(overrides.ErrorCode ?? 0),
+  ErrorMessage: String(overrides.ErrorMessage || 'No Error'),
+  ...overrides,
+});
+
+const isCompanyKeyValid = (providedKey) => {
+  if (!SEAMLESS_COMPANY_KEY) {
+    return true;
+  }
+  return String(providedKey || '') === String(SEAMLESS_COMPANY_KEY);
+};
+
+const findUserBySeamlessName = async (payload) => {
+  const username = getBodyValue(payload, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+  if (!username) {
+    return null;
+  }
+
+  const result = await query(
+    `SELECT id, username, balance, status
+     FROM users
+     WHERE LOWER(username) = LOWER($1)
+     LIMIT 1`,
+    [String(username)]
+  );
+
+  return result.rows[0] || null;
+};
+
+const findReferenceNo = (payload) => {
+  const value = getBodyValue(
+    payload,
+    'RefNo',
+    'ReferenceNo',
+    'TransactionId',
+    'TransactionID',
+    'TransferCode',
+    'OrderNo',
+    'BetId',
+    'WagerId',
+    'RoundId'
+  );
+  return value ? String(value) : '';
+};
+
+const findAmount = (payload) => {
+  const raw = getBodyValue(payload, 'Amount', 'Stake', 'BetAmount', 'WinLoseAmount', 'WinLoss', 'PayoutAmount', 'BonusAmount');
+  const value = Number(raw || 0);
+  return Number.isFinite(value) ? Math.abs(value) : 0;
+};
+
+const mapSeamlessStatus = (status) => {
+  if (status === 'settled') return 'Settled';
+  if (status === 'void') return 'Void';
+  return 'Running';
+};
+
+const mapUserRow = (row) => ({
+  id: row.id,
+  name: row.full_name || row.username,
+  email: row.email,
+  phone: row.phone || '',
+  country: row.country || 'Bangladesh',
+  dateOfBirth: row.date_of_birth || '01/01/1990',
+  balance: String(row.balance ?? '0'),
+  status: row.status,
+  createdAt: row.created_at,
+});
+
+const signUserToken = (userId) => jwt.sign({ role: 'user', userId }, USER_JWT_SECRET, { expiresIn: '7d' });
+
+const requireAdminAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const token = authHeader.slice(7);
+  try {
+    const decoded = jwt.verify(token, ADMIN_JWT_SECRET);
+    req.admin = decoded;
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+const requireUserAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const token = authHeader.slice(7);
+    const decoded = jwt.verify(token, USER_JWT_SECRET);
+    const userResult = await query(
+      `SELECT id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at
+       FROM users WHERE id = $1`,
+      [decoded.userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid token user' });
+    }
+
+    req.authUser = userResult.rows[0];
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+const MOCK_CASINO_GAMES = [
+  { title: 'Super Ace Deluxe',         provider: 'JDB',            category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/67bb43f1-f233-4bef-96d1-481e2a377457_vertical.png@webp', game_url: '#' },
+  { title: 'Aviator',                  provider: 'Spribe',         category: 'crash', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/18f9b3f7-55fe-4231-9f81-250036e9e25d_vertical.png@webp', game_url: '#' },
+  { title: 'Fortune Gems 3',           provider: 'JDB',            category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/orchestra/17c8f884-c3b6-4f3d-ba7f-8e2c2fd75b84_vertical.png@webp', game_url: '#' },
+  { title: 'Wild Bounty Showdown',     provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/7ef80b5a-032e-44e1-a4e8-22f172009f06_vertical.png@webp', game_url: '#' },
+  { title: 'Tower Rush',               provider: 'PG Soft',        category: 'crash', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/fd80b5e4-d5dc-484b-8852-921ee24266ae_vertical.png@webp', game_url: '#' },
+  { title: 'Gates of Olympus 1000',    provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/bc0e8a47-49ee-4f2d-88af-a879ac7a5c67_vertical.png@webp', game_url: '#' },
+  { title: 'Money Coming Expand Bets', provider: 'Orchestra',      category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/orchestra/2650e9ee-2aa8-4adb-bdf5-0b1224b9f3af_vertical.png@webp', game_url: '#' },
+  { title: 'Golden Genie',             provider: 'Orchestra',      category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/orchestra/0a713f35-d4d4-43d6-accb-7fca63f3c05a_vertical.jpg@webp', game_url: '#' },
+  { title: 'Crazy Time',               provider: 'Evolution',      category: 'live',  image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/26092fbd-24c8-4128-a039-029a73e37ecf_vertical.png@webp', game_url: '#' },
+  { title: 'Pilot Chicken',            provider: 'PG Soft',        category: 'crash', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/62d6c213-4433-4797-9bb5-18b5ae02e528_vertical.jpg@webp', game_url: '#' },
+  { title: 'Treasures of Aztec',       provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/6ee23772-9fd1-4912-975c-f9f89570f065_vertical.jpg@webp', game_url: '#' },
+  { title: 'Bizarre',                  provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/fd36d964-5c89-420a-a9eb-996d68f58b06_vertical.png@webp', game_url: '#' },
+  { title: 'Blazing Crown Deluxe',     provider: 'MrSlotty',       category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/mrslotty/64b69510-6f11-4c2c-b1c8-186d454171b3_vertical.png@webp', game_url: '#' },
+  { title: 'Sun of Egypt 2',           provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/a440a7d9-3a35-4fae-a522-075984c1bef9_vertical.png@webp', game_url: '#' },
+  { title: 'Zeus',                     provider: 'Orchestra',      category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/orchestra/04f36e36-8cac-4adb-9cc4-dac63650de5a_vertical.jpg@webp', game_url: '#' },
+  { title: 'Prosperity Tiger',         provider: 'Orchestra',      category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/orchestra/e3c76638-c8de-48a7-b5e8-245208469ca1_vertical.png@webp', game_url: '#' },
+  { title: 'Golden Empire',            provider: 'Orchestra',      category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/orchestra/c972ab3a-ee66-4384-88e0-a8bda6aa65e8_vertical.png@webp', game_url: '#' },
+  { title: 'Fortune Snake',            provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/45af0924-3f24-4a1a-b16e-1317c714e26b_vertical.jpg@webp', game_url: '#' },
+  { title: 'Lucky Neko',               provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/b08b7b0f-09da-4099-9baf-9b35b6c6453a_vertical.png@webp', game_url: '#' },
+  { title: 'Triple Tigers',            provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/586724d6-9c26-4971-8fa6-79ba8c4f3ce4_vertical.jpg@webp', game_url: '#' },
+  { title: 'Persian Fortune',          provider: 'Fundist',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/fundist/b855c83a-a445-427a-9f2d-1044ef9375ea_vertical.jpg@webp', game_url: '#' },
+  { title: 'Book of Vikings',          provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/4ffb3aee-7a47-4e95-a0c0-aef0a29e1e97_vertical.jpg@webp', game_url: '#' },
+  { title: 'Sweet Bonanza',            provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/sweet-bonanza_vertical.jpg@webp', game_url: '#' },
+  { title: 'Dragon Hatch',             provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/dragon-hatch_vertical.jpg@webp', game_url: '#' },
+  { title: 'Mahjong Ways 2',           provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/mahjong-ways-2_vertical.jpg@webp', game_url: '#' },
+  { title: 'Caishen Wins',             provider: 'PG Soft',        category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/v/caishen-wins_vertical.jpg@webp', game_url: '#' },
+  { title: 'Buffalo King Megaways',    provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/buffalo-king-megaways_vertical.jpg@webp', game_url: '#' },
+  { title: 'Starlight Princess',       provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/starlight-princess_vertical.jpg@webp', game_url: '#' },
+  { title: 'Wolf Gold',                provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/wolf-gold_vertical.jpg@webp', game_url: '#' },
+  { title: 'Big Bass Bonanza',         provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/big-bass-bonanza_vertical.jpg@webp', game_url: '#' },
+];
+
+const runCasinoSeed = async () => {
+  for (let i = 0; i < MOCK_CASINO_GAMES.length; i++) {
+    const g = MOCK_CASINO_GAMES[i];
+    await query(
+      `INSERT INTO casino_games (title, provider, category, image_url, game_url, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [g.title, g.provider, g.category, g.image_url, g.game_url, i]
+    );
+  }
+};
+
+const initializeAdminSchema = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key VARCHAR(120) PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS game_providers (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(120) UNIQUE NOT NULL,
+      api_endpoint TEXT NOT NULL,
+      api_key TEXT,
+      supported_sections VARCHAR(255) DEFAULT 'casino',
+      status VARCHAR(20) DEFAULT 'active',
+      last_sync_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS payment_methods (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(120) NOT NULL,
+      code VARCHAR(80) UNIQUE NOT NULL,
+      method_type VARCHAR(20) DEFAULT 'both',
+      provider VARCHAR(120),
+      image_url TEXT,
+      account_number VARCHAR(64),
+      status VARCHAR(20) DEFAULT 'active',
+      min_amount DECIMAL(12,2) DEFAULT 0,
+      max_amount DECIMAL(12,2) DEFAULT 999999,
+      fee_percent DECIMAL(6,2) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS content_sections (
+      id SERIAL PRIMARY KEY,
+      slug VARCHAR(120) UNIQUE NOT NULL,
+      title VARCHAR(180) NOT NULL,
+      section_type VARCHAR(40) DEFAULT 'home',
+      is_active BOOLEAN DEFAULT true,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS content_items (
+      id SERIAL PRIMARY KEY,
+      section_id INTEGER NOT NULL REFERENCES content_sections(id) ON DELETE CASCADE,
+      title VARCHAR(180) NOT NULL,
+      subtitle VARCHAR(300),
+      image_url TEXT,
+      target_url TEXT,
+      payload JSONB DEFAULT '{}'::jsonb,
+      is_active BOOLEAN DEFAULT true,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS seo_pages (
+      id SERIAL PRIMARY KEY,
+      path VARCHAR(220) UNIQUE NOT NULL,
+      title VARCHAR(220) NOT NULL,
+      description TEXT,
+      keywords TEXT,
+      og_image TEXT,
+      no_index BOOLEAN DEFAULT false,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(80)`);
+  await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
+  await query(`ALTER TABLE bets ADD COLUMN IF NOT EXISTS game_name VARCHAR(120)`);
+  await query(`ALTER TABLE bets ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb`);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30)`);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120)`);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(80) DEFAULT 'Bangladesh'`);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth VARCHAR(20)`);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL`);
+  await query(`ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await query(`ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS account_number VARCHAR(64)`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS user_profile_changes (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      field_name VARCHAR(80) NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      metadata JSONB DEFAULT '{}'::jsonb
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_user_profile_changes_user_time ON user_profile_changes(user_id, changed_at DESC)`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS user_login_attempts (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      login_field VARCHAR(10) NOT NULL,
+      login_value TEXT,
+      success BOOLEAN NOT NULL,
+      failure_reason TEXT,
+      ip_address VARCHAR(64),
+      user_agent TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_user_login_attempts_user_time ON user_login_attempts(user_id, created_at DESC)`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS casino_games (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(200) NOT NULL,
+      provider VARCHAR(100) DEFAULT 'Unknown',
+      category VARCHAR(80) DEFAULT 'slots',
+      image_url TEXT NOT NULL,
+      game_url TEXT DEFAULT '#',
+      is_active BOOLEAN DEFAULT true,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const gameCount = await query('SELECT COUNT(*)::int AS c FROM casino_games');
+  if (Number(gameCount.rows[0]?.c) === 0) {
+    await runCasinoSeed();
+  }
+
+  const paymentCount = await query('SELECT COUNT(*)::int AS c FROM payment_methods');
+  if (Number(paymentCount.rows[0]?.c) === 0) {
+    await query(
+      `INSERT INTO payment_methods (name, code, method_type, provider, status, min_amount, max_amount, fee_percent)
+       VALUES
+         ('BKash', 'bkash', 'both', 'BKash', 'active', 200, 20000, 0),
+         ('Nagad', 'nagad', 'both', 'Nagad', 'active', 200, 20000, 0),
+         ('Upay', 'upay', 'both', 'Upay', 'active', 200, 20000, 0)`
+    );
+  }
+};
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date() });
+});
+
+// ── Public casino games ───────────────────────────────────────────────────────
+app.get('/api/casino-games', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT * FROM casino_games WHERE is_active = true ORDER BY sort_order ASC, id ASC`
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Admin casino-games CRUD ───────────────────────────────────────────────────
+app.get('/api/admin/casino-games', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query(`SELECT * FROM casino_games ORDER BY sort_order ASC, id ASC`);
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/casino-games/seed', requireAdminAuth, async (req, res) => {
+  try {
+    await query('TRUNCATE casino_games RESTART IDENTITY');
+    await runCasinoSeed();
+    const count = await query('SELECT COUNT(*)::int AS c FROM casino_games');
+    return res.json({ ok: true, count: count.rows[0]?.c });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/casino-games', requireAdminAuth, async (req, res) => {
+  const { title, provider = 'Unknown', category = 'slots', image_url, game_url = '#', sort_order = 0, is_active = true } = req.body || {};
+  if (!title || !image_url) return res.status(400).json({ error: 'title and image_url are required' });
+  try {
+    const result = await query(
+      `INSERT INTO casino_games (title, provider, category, image_url, game_url, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [title, provider, category, image_url, game_url, sort_order, is_active]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/casino-games/:id', requireAdminAuth, async (req, res) => {
+  const { title, provider, category, image_url, game_url, sort_order, is_active } = req.body || {};
+  const fields = [];
+  const values = [];
+  let idx = 1;
+  if (title      !== undefined) { fields.push(`title=$${idx++}`);      values.push(title); }
+  if (provider   !== undefined) { fields.push(`provider=$${idx++}`);   values.push(provider); }
+  if (category   !== undefined) { fields.push(`category=$${idx++}`);   values.push(category); }
+  if (image_url  !== undefined) { fields.push(`image_url=$${idx++}`);  values.push(image_url); }
+  if (game_url   !== undefined) { fields.push(`game_url=$${idx++}`);   values.push(game_url); }
+  if (sort_order !== undefined) { fields.push(`sort_order=$${idx++}`); values.push(sort_order); }
+  if (is_active  !== undefined) { fields.push(`is_active=$${idx++}`);  values.push(is_active); }
+  if (!fields.length) return res.status(400).json({ error: 'No fields to update' });
+  fields.push(`updated_at=CURRENT_TIMESTAMP`);
+  values.push(req.params.id);
+  try {
+    const result = await query(
+      `UPDATE casino_games SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`,
+      values
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Game not found' });
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/casino-games/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query(`DELETE FROM casino_games WHERE id=$1 RETURNING id`, [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Game not found' });
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/payment-methods', async (req, res) => {
+  const requestedType = String(req.query.type || 'deposit').toLowerCase();
+  const methodType = requestedType === 'withdrawal' ? 'withdrawal' : 'deposit';
+
+  try {
+    const result = await query(
+      `SELECT id, name, code, method_type, provider, image_url, account_number, min_amount, max_amount, fee_percent
+       FROM payment_methods
+       WHERE status = 'active'
+         AND (method_type = 'both' OR method_type = $1)
+       ORDER BY id ASC`,
+      [methodType]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const { email, phone, password } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
+
+  if (!normalizedEmail || !normalizedPhone || !password) {
+    return res.status(400).json({ error: 'Email, phone and password are required' });
+  }
+
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    const duplicate = await query(
+      `SELECT id FROM users WHERE LOWER(email) = $1 OR phone = $2`,
+      [normalizedEmail, normalizedPhone]
+    );
+    if (duplicate.rows.length > 0) {
+      return res.status(409).json({ error: 'Email or phone already registered' });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const usernameBase = normalizedEmail.split('@')[0].replace(/[^a-z0-9_]/gi, '').toLowerCase() || 'player';
+    const username = `${usernameBase}_${Date.now().toString().slice(-6)}`;
+
+    const inserted = await query(
+      `INSERT INTO users (username, full_name, email, phone, country, date_of_birth, password_hash, balance, status)
+       VALUES ($1, $2, $3, $4, 'Bangladesh', '01/01/1990', $5, 0, 'active')
+       RETURNING id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at`,
+      [username, username.toUpperCase(), normalizedEmail, normalizedPhone, passwordHash]
+    );
+
+    const row = inserted.rows[0];
+    const token = signUserToken(row.id);
+    return res.status(201).json({
+      ok: true,
+      message: 'Registration successful',
+      token,
+      user: mapUserRow(row),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, phone, password } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
+
+  if ((!normalizedEmail && !normalizedPhone) || !password) {
+    return res.status(400).json({ error: 'Email or phone and password are required' });
+  }
+
+  try {
+    const loginField = normalizedEmail ? 'email' : 'phone';
+    const loginValue = normalizedEmail || normalizedPhone;
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+
+    const result = await query(
+      `SELECT id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at, password_hash
+       FROM users
+       WHERE ($1::text IS NOT NULL AND LOWER(email) = $1)
+          OR ($2::text IS NOT NULL AND phone = $2)
+       LIMIT 1`,
+      [normalizedEmail, normalizedPhone]
+    );
+
+    if (result.rows.length === 0) {
+      await query(
+        `INSERT INTO user_login_attempts (user_id, login_field, login_value, success, failure_reason, ip_address, user_agent)
+         VALUES (NULL, $1, $2, false, 'user_not_found', $3, $4)`,
+        [loginField, loginValue, ipAddress, userAgent]
+      );
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const row = result.rows[0];
+    if (row.status !== 'active') {
+      await query(
+        `INSERT INTO user_login_attempts (user_id, login_field, login_value, success, failure_reason, ip_address, user_agent)
+         VALUES ($1, $2, $3, false, 'account_inactive', $4, $5)`,
+        [row.id, loginField, loginValue, ipAddress, userAgent]
+      );
+      return res.status(403).json({ error: 'Account is not active' });
+    }
+
+    const valid = await bcrypt.compare(String(password), row.password_hash || '');
+    if (!valid) {
+      await query(
+        `INSERT INTO user_login_attempts (user_id, login_field, login_value, success, failure_reason, ip_address, user_agent)
+         VALUES ($1, $2, $3, false, 'invalid_password', $4, $5)`,
+        [row.id, loginField, loginValue, ipAddress, userAgent]
+      );
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = signUserToken(row.id);
+    await query('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [row.id]);
+    await query(
+      `INSERT INTO user_login_attempts (user_id, login_field, login_value, success, failure_reason, ip_address, user_agent)
+       VALUES ($1, $2, $3, true, NULL, $4, $5)`,
+      [row.id, loginField, loginValue, ipAddress, userAgent]
+    );
+    return res.json({
+      ok: true,
+      message: 'Login successful',
+      token,
+      user: mapUserRow(row),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/auth/me', requireUserAuth, async (req, res) => {
+  return res.json({ user: mapUserRow(req.authUser) });
+});
+
+app.patch('/api/auth/profile', requireUserAuth, async (req, res) => {
+  const { name, email, phone, country, dateOfBirth } = req.body || {};
+  const userId = req.authUser.id;
+
+  if (!name || !email || !phone || !country || !dateOfBirth) {
+    return res.status(400).json({ error: 'name, email, phone, country and dateOfBirth are required' });
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
+
+  try {
+    const currentUser = await query(
+      `SELECT full_name, email, phone, country, date_of_birth FROM users WHERE id = $1`,
+      [userId]
+    );
+    if (currentUser.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const duplicate = await query(
+      `SELECT id FROM users WHERE id <> $1 AND (LOWER(email) = $2 OR phone = $3) LIMIT 1`,
+      [userId, normalizedEmail, normalizedPhone]
+    );
+    if (duplicate.rows.length > 0) {
+      return res.status(409).json({ error: 'Email or phone already in use' });
+    }
+
+    const updated = await query(
+      `UPDATE users
+       SET full_name = $1,
+           email = $2,
+           phone = $3,
+           country = $4,
+           date_of_birth = $5,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6
+       RETURNING id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at`,
+      [String(name).trim(), normalizedEmail, normalizedPhone, String(country).trim(), String(dateOfBirth).trim(), userId]
+    );
+
+    const previous = currentUser.rows[0];
+    const nextValues = {
+      full_name: String(name).trim(),
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      country: String(country).trim(),
+      date_of_birth: String(dateOfBirth).trim(),
+    };
+
+    const changedFields = Object.entries(nextValues).filter(([field, value]) => String(previous[field] || '') !== String(value || ''));
+    for (const [field, value] of changedFields) {
+      await query(
+        `INSERT INTO user_profile_changes (user_id, field_name, old_value, new_value, metadata)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [userId, field, previous[field] || null, value || null, JSON.stringify({ source: 'profile_modal' })]
+      );
+    }
+
+    return res.json({ ok: true, message: 'Profile updated', user: mapUserRow(updated.rows[0]) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/change-password', requireUserAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+  }
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+
+  try {
+    const current = await query('SELECT password_hash FROM users WHERE id = $1', [req.authUser.id]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const valid = await bcrypt.compare(String(currentPassword), current.rows[0].password_hash || '');
+    if (!valid) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    const nextHash = await bcrypt.hash(String(newPassword), 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextHash, req.authUser.id]);
+    return res.json({ ok: true, message: 'Password updated' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/password-reset', async (req, res) => {
+  const { email, phone, newPassword } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
+  if ((!normalizedEmail && !normalizedPhone) || !newPassword) {
+    return res.status(400).json({ error: 'email or phone and newPassword are required' });
+  }
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  }
+
+  try {
+    const userResult = await query(
+      `SELECT id FROM users
+       WHERE ($1::text IS NOT NULL AND LOWER(email) = $1)
+          OR ($2::text IS NOT NULL AND phone = $2)
+       LIMIT 1`,
+      [normalizedEmail, normalizedPhone]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    const nextHash = await bcrypt.hash(String(newPassword), 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextHash, userResult.rows[0].id]);
+    return res.json({ ok: true, message: 'Password reset successful' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/deposits', requireUserAuth, async (req, res) => {
+  const { amount, payment_method, provider_name } = req.body || {};
+  const numericAmount = Number(amount);
+
+  if (!payment_method || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'amount and payment_method are required' });
+  }
+
+  try {
+    const methodResult = await query(
+      `SELECT code, method_type, status, min_amount, max_amount
+       FROM payment_methods
+       WHERE code = $1
+       LIMIT 1`,
+      [String(payment_method).toLowerCase()]
+    );
+    if (methodResult.rows.length === 0 || methodResult.rows[0].status !== 'active') {
+      return res.status(400).json({ error: 'Payment method is not available' });
+    }
+
+    const method = methodResult.rows[0];
+    if (!(method.method_type === 'both' || method.method_type === 'deposit')) {
+      return res.status(400).json({ error: 'Payment method does not support deposits' });
+    }
+
+    if (numericAmount < Number(method.min_amount) || numericAmount > Number(method.max_amount)) {
+      return res.status(400).json({ error: `Amount must be between ${method.min_amount} and ${method.max_amount}` });
+    }
+
+    const inserted = await query(
+      `INSERT INTO transactions (user_id, type, amount, status, payment_method, reference_id, metadata)
+       VALUES ($1, 'deposit', $2, 'pending', $3, $4, $5::jsonb)
+       RETURNING *`,
+      [
+        req.authUser.id,
+        numericAmount,
+        method.code,
+        `DEP-${Date.now()}`,
+        JSON.stringify({ provider: provider_name || method.code, source: 'user_modal' }),
+      ]
+    );
+
+    return res.status(201).json({
+      ok: true,
+      message: 'Deposit submitted and waiting for admin approval',
+      transaction: inserted.rows[0],
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/withdrawals', requireUserAuth, async (req, res) => {
+  const { amount, payment_method, account_number, provider_name } = req.body || {};
+  const numericAmount = Number(amount);
+
+  if (!payment_method || !account_number || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'amount, payment_method and account_number are required' });
+  }
+
+  try {
+    const methodResult = await query(
+      `SELECT code, method_type, status, min_amount, max_amount
+       FROM payment_methods
+       WHERE code = $1
+       LIMIT 1`,
+      [String(payment_method).toLowerCase()]
+    );
+    if (methodResult.rows.length === 0 || methodResult.rows[0].status !== 'active') {
+      return res.status(400).json({ error: 'Payment method is not available' });
+    }
+
+    const method = methodResult.rows[0];
+    if (!(method.method_type === 'both' || method.method_type === 'withdrawal')) {
+      return res.status(400).json({ error: 'Payment method does not support withdrawals' });
+    }
+
+    if (numericAmount < Number(method.min_amount) || numericAmount > Number(method.max_amount)) {
+      return res.status(400).json({ error: `Amount must be between ${method.min_amount} and ${method.max_amount}` });
+    }
+
+    const balanceResult = await query('SELECT balance FROM users WHERE id = $1', [req.authUser.id]);
+    const currentBalance = Number(balanceResult.rows[0]?.balance || 0);
+    if (currentBalance < numericAmount) {
+      return res.status(400).json({ error: 'Insufficient balance' });
+    }
+
+    const inserted = await query(
+      `INSERT INTO transactions (user_id, type, amount, status, payment_method, reference_id, metadata)
+       VALUES ($1, 'withdrawal', $2, 'pending', $3, $4, $5::jsonb)
+       RETURNING *`,
+      [
+        req.authUser.id,
+        numericAmount,
+        method.code,
+        `WDR-${Date.now()}`,
+        JSON.stringify({
+          account_number: String(account_number).trim(),
+          provider: provider_name || method.code,
+          source: 'user_modal',
+        }),
+      ]
+    );
+
+    return res.status(201).json({
+      ok: true,
+      message: 'Withdrawal submitted and waiting for admin approval',
+      transaction: inserted.rows[0],
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/auth/transactions', requireUserAuth, async (req, res) => {
+  const requestedType = String(req.query.type || '').toLowerCase();
+  const type = requestedType === 'deposit' || requestedType === 'withdrawal' ? requestedType : null;
+
+  try {
+    if (type) {
+      const filtered = await query(
+        `SELECT id, type, amount, status, payment_method, reference_id, created_at
+         FROM transactions
+         WHERE user_id = $1 AND type = $2
+         ORDER BY created_at DESC`,
+        [req.authUser.id, type]
+      );
+      return res.json(filtered.rows);
+    }
+
+    const result = await query(
+      `SELECT id, type, amount, status, payment_method, reference_id, created_at
+       FROM transactions
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.authUser.id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/bets/place', requireUserAuth, async (req, res) => {
+  const { amount, odds, game_name = 'Unknown', metadata = {} } = req.body || {};
+  const numericAmount = Number(amount);
+  const numericOdds = Number(odds);
+
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ error: 'Valid amount is required' });
+  }
+  if (!Number.isFinite(numericOdds) || numericOdds < 1.01) {
+    return res.status(400).json({ error: 'Valid odds is required (>= 1.01)' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      'SELECT id, balance, status FROM users WHERE id = $1 FOR UPDATE',
+      [req.authUser.id]
+    );
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userResult.rows[0];
+    if (user.status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Account is not active' });
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    if (currentBalance < numericAmount) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Insufficient balance' });
+    }
+
+    const potentialWin = Number((numericAmount * numericOdds).toFixed(2));
+    const betResult = await client.query(
+      `INSERT INTO bets (user_id, amount, odds, potential_win, status, game_name, metadata)
+       VALUES ($1, $2, $3, $4, 'pending', $5, $6::jsonb)
+       RETURNING *`,
+      [req.authUser.id, numericAmount, numericOdds, potentialWin, String(game_name || 'Unknown'), JSON.stringify(metadata || {})]
+    );
+
+    const nextBalance = Number((currentBalance - numericAmount).toFixed(2));
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, req.authUser.id]);
+
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, payment_method, reference_id, metadata)
+       VALUES ($1, 'manual', $2, 'completed', 'bet_stake', $3, $4::jsonb)`,
+      [req.authUser.id, numericAmount, `BET-${betResult.rows[0].id}`, JSON.stringify({ action: 'bet_place', game_name: String(game_name || 'Unknown') })]
+    );
+
+    await client.query('COMMIT');
+    return res.status(201).json({
+      ok: true,
+      message: 'Bet placed successfully',
+      bet: betResult.rows[0],
+      balance: String(nextBalance.toFixed(2)),
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/auth/bets', requireUserAuth, async (req, res) => {
+  const status = String(req.query.status || '').toLowerCase();
+  const allowed = ['open', 'settled'];
+  const wants = allowed.includes(status) ? status : null;
+
+  try {
+    if (wants === 'open') {
+      const openBets = await query(
+        `SELECT id, game_name, amount, odds, potential_win, status, created_at
+         FROM bets
+         WHERE user_id = $1 AND status = 'pending'
+         ORDER BY created_at DESC`,
+        [req.authUser.id]
+      );
+      return res.json(openBets.rows);
+    }
+
+    if (wants === 'settled') {
+      const settledBets = await query(
+        `SELECT id, game_name, amount, odds, potential_win, status, created_at, settled_at
+         FROM bets
+         WHERE user_id = $1 AND status IN ('won', 'lost', 'cancelled')
+         ORDER BY COALESCE(settled_at, created_at) DESC`,
+        [req.authUser.id]
+      );
+      return res.json(settledBets.rows);
+    }
+
+    const allBets = await query(
+      `SELECT id, game_name, amount, odds, potential_win, status, created_at, settled_at
+       FROM bets
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.authUser.id]
+    );
+    return res.json(allBets.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/auth/profile-stats', requireUserAuth, async (req, res) => {
+  const userId = req.authUser.id;
+  try {
+    const [txCount, txTotals, betsAgg, gameAgg, changesAgg] = await Promise.all([
+      query(
+        `SELECT
+          COUNT(*)::int AS total_transactions,
+          COUNT(*) FILTER (WHERE type = 'deposit')::int AS deposit_count,
+          COUNT(*) FILTER (WHERE type = 'withdrawal')::int AS withdrawal_count,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_transactions
+         FROM transactions WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed'), 0)::numeric AS total_deposit,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'withdrawal' AND status = 'completed'), 0)::numeric AS total_withdrawal,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'pending'), 0)::numeric AS pending_deposit,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'withdrawal' AND status = 'pending'), 0)::numeric AS pending_withdrawal
+         FROM transactions WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COUNT(*)::int AS total_bets,
+          COUNT(*) FILTER (WHERE status = 'won')::int AS won_bets,
+          COUNT(*) FILTER (WHERE status = 'lost')::int AS lost_bets,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS open_bets
+         FROM bets WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COALESCE(NULLIF(game_name, ''), 'Unknown') AS game_name,
+          COUNT(*)::int AS plays
+         FROM bets
+         WHERE user_id = $1
+         GROUP BY COALESCE(NULLIF(game_name, ''), 'Unknown')
+         ORDER BY plays DESC, game_name ASC`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COUNT(*) FILTER (WHERE changed_at >= NOW() - INTERVAL '7 days')::int AS changes_7d,
+          COUNT(*) FILTER (WHERE field_name IN ('full_name', 'email', 'phone') AND changed_at >= NOW() - INTERVAL '30 days')::int AS identity_changes_30d
+         FROM user_profile_changes
+         WHERE user_id = $1`,
+        [userId]
+      ),
+    ]);
+
+    const won = Number(betsAgg.rows[0]?.won_bets || 0);
+    const lost = Number(betsAgg.rows[0]?.lost_bets || 0);
+    const settled = won + lost;
+    const winRate = settled > 0 ? won / settled : 0;
+
+    return res.json({
+      highGainer: winRate >= 0.8,
+      suspicious:
+        winRate >= 0.8 ||
+        Number(changesAgg.rows[0]?.changes_7d || 0) >= 3 ||
+        Number(changesAgg.rows[0]?.identity_changes_30d || 0) >= 3,
+      stats: {
+        totalTransactions: Number(txCount.rows[0]?.total_transactions || 0),
+        depositCount: Number(txCount.rows[0]?.deposit_count || 0),
+        withdrawalCount: Number(txCount.rows[0]?.withdrawal_count || 0),
+        pendingTransactions: Number(txCount.rows[0]?.pending_transactions || 0),
+        totalDeposit: String(txTotals.rows[0]?.total_deposit || '0'),
+        totalWithdrawal: String(txTotals.rows[0]?.total_withdrawal || '0'),
+        pendingDeposit: String(txTotals.rows[0]?.pending_deposit || '0'),
+        pendingWithdrawal: String(txTotals.rows[0]?.pending_withdrawal || '0'),
+        totalBets: Number(betsAgg.rows[0]?.total_bets || 0),
+        wonBets: won,
+        lostBets: lost,
+        openBets: Number(betsAgg.rows[0]?.open_bets || 0),
+        winRate,
+        profileChanges7d: Number(changesAgg.rows[0]?.changes_7d || 0),
+        identityChanges30d: Number(changesAgg.rows[0]?.identity_changes_30d || 0),
+      },
+      gamePlays: gameAgg.rows,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/login', async (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid admin credentials' });
+  }
+
+  const token = jwt.sign({ role: 'admin', username: ADMIN_USERNAME }, ADMIN_JWT_SECRET, { expiresIn: '12h' });
+
+  return res.json({
+    ok: true,
+    token,
+    admin: {
+      username: ADMIN_USERNAME,
+      role: 'admin',
+    },
+  });
+});
+
+app.get('/api/admin/summary', requireAdminAuth, async (req, res) => {
+  try {
+    const [usersCount, betsCount, pendingBetsCount, transactionsTotal, activeUsers, blockedUsers, sectionCount, itemCount] = await Promise.all([
+      query('SELECT COUNT(*)::int AS count FROM users'),
+      query('SELECT COUNT(*)::int AS count FROM bets'),
+      query("SELECT COUNT(*)::int AS count FROM bets WHERE status = 'pending'"),
+      query("SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM transactions WHERE type IN ('deposit','payout','withdrawal')"),
+      query("SELECT COUNT(*)::int AS count FROM users WHERE status = 'active'"),
+      query("SELECT COUNT(*)::int AS count FROM users WHERE status = 'blocked'"),
+      query('SELECT COUNT(*)::int AS count FROM content_sections'),
+      query('SELECT COUNT(*)::int AS count FROM content_items'),
+    ]);
+
+    return res.json({
+      users: usersCount.rows[0]?.count || 0,
+      bets: betsCount.rows[0]?.count || 0,
+      pendingBets: pendingBetsCount.rows[0]?.count || 0,
+      totalTransactionVolume: transactionsTotal.rows[0]?.total || '0',
+      activeUsers: activeUsers.rows[0]?.count || 0,
+      blockedUsers: blockedUsers.rows[0]?.count || 0,
+      contentSections: sectionCount.rows[0]?.count || 0,
+      contentItems: itemCount.rows[0]?.count || 0,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/billing/overview', requireAdminAuth, async (req, res) => {
+  try {
+    const [depositTotal, withdrawalTotal, payoutTotal, pendingWithdrawals] = await Promise.all([
+      query("SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM transactions WHERE type = 'deposit' AND status = 'completed'"),
+      query("SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM transactions WHERE type = 'withdrawal' AND status = 'completed'"),
+      query("SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM transactions WHERE type = 'payout' AND status = 'completed'"),
+      query("SELECT COUNT(*)::int AS count FROM transactions WHERE type = 'withdrawal' AND status = 'pending'"),
+    ]);
+
+    return res.json({
+      depositTotal: depositTotal.rows[0]?.total || '0',
+      withdrawalTotal: withdrawalTotal.rows[0]?.total || '0',
+      payoutTotal: payoutTotal.rows[0]?.total || '0',
+      pendingWithdrawals: pendingWithdrawals.rows[0]?.count || 0,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT
+        u.id,
+        u.username,
+        u.full_name,
+        u.email,
+        u.phone,
+        u.balance,
+        u.status,
+        u.created_at,
+        COALESCE(MAX(b.created_at), u.created_at) AS last_activity,
+        CASE
+          WHEN COUNT(*) FILTER (WHERE b.status IN ('won', 'lost')) = 0 THEN false
+          ELSE (
+            (COUNT(*) FILTER (WHERE b.status = 'won'))::decimal /
+            NULLIF(COUNT(*) FILTER (WHERE b.status IN ('won', 'lost')), 0)
+          ) >= 0.8
+        END AS high_gainer,
+        (
+          SELECT COUNT(*)::int
+          FROM user_profile_changes pc
+          WHERE pc.user_id = u.id
+            AND pc.changed_at >= NOW() - INTERVAL '7 days'
+        ) AS profile_change_count_7d,
+        (
+          SELECT COUNT(*)::int
+          FROM user_profile_changes pc
+          WHERE pc.user_id = u.id
+            AND pc.field_name IN ('full_name', 'email', 'phone')
+            AND pc.changed_at >= NOW() - INTERVAL '30 days'
+        ) >= 3 AS suspicious
+      FROM users u
+      LEFT JOIN bets b ON b.user_id = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC`
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/users', requireAdminAuth, async (req, res) => {
+  const { username, email, password = 'ChangeMe@123', status = 'active', balance = 0 } = req.body || {};
+
+  if (!username || !email) {
+    return res.status(400).json({ error: 'username and email are required' });
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const result = await query(
+      `INSERT INTO users (username, email, password_hash, balance, status)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, username, email, balance, status, created_at, updated_at`,
+      [username, email, passwordHash, balance, status]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Username or email already exists' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/users/:id', requireAdminAuth, async (req, res) => {
+  const { status, balance } = req.body || {};
+  const userId = Number(req.params.id);
+
+  if (!userId) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+
+  try {
+    const existing = await query('SELECT id, status, balance FROM users WHERE id = $1', [userId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const nextStatus = status ?? existing.rows[0].status;
+    const nextBalance = balance ?? existing.rows[0].balance;
+    const updated = await query(
+      'UPDATE users SET status = $1, balance = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING id, username, email, balance, status, created_at, updated_at',
+      [nextStatus, nextBalance, userId]
+    );
+
+    return res.json(updated.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/users/:id', requireAdminAuth, async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await client.query('DELETE FROM user_profile_changes WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM bonuses WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM transactions WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM bets WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM users WHERE id = $1', [userId]);
+    await client.query('COMMIT');
+    return res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/users/:id/insights', requireAdminAuth, async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+
+  try {
+    const [
+      userResult,
+      aggregateResult,
+      gameStatsResult,
+      profileChangesResult,
+      loginAttemptsResult,
+      recentTransactionsResult,
+    ] = await Promise.all([
+      query(
+        `SELECT id, username, full_name, email, phone, balance, status, country, date_of_birth, created_at, last_login_at
+         FROM users WHERE id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COUNT(*)::int AS total_bets,
+          COUNT(*) FILTER (WHERE status = 'won')::int AS won_bets,
+          COUNT(*) FILTER (WHERE status = 'lost')::int AS lost_bets,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_bets,
+          COALESCE(SUM(amount) FILTER (WHERE status = 'won'), 0)::numeric AS won_stake_total,
+          COALESCE(SUM(amount) FILTER (WHERE status = 'lost'), 0)::numeric AS lost_stake_total,
+          COALESCE(SUM(amount) FILTER (WHERE status IN ('won', 'lost')), 0)::numeric AS settled_stake_total,
+          COALESCE(AVG(odds) FILTER (WHERE status IN ('won', 'lost')), 0)::numeric AS avg_odds,
+          COALESCE(SUM(amount) FILTER (WHERE status IN ('won', 'lost') AND game_name IS NOT NULL), 0)::numeric AS tracked_game_stake
+         FROM bets
+         WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COALESCE(NULLIF(game_name, ''), 'Unknown') AS game_name,
+          COUNT(*)::int AS plays,
+          COUNT(*) FILTER (WHERE status = 'won')::int AS wins,
+          COUNT(*) FILTER (WHERE status = 'lost')::int AS losses,
+          COALESCE(SUM(amount), 0)::numeric AS total_stake
+         FROM bets
+         WHERE user_id = $1
+         GROUP BY COALESCE(NULLIF(game_name, ''), 'Unknown')
+         ORDER BY plays DESC, game_name ASC`,
+        [userId]
+      ),
+      query(
+        `SELECT id, field_name, old_value, new_value, changed_at, metadata
+         FROM user_profile_changes
+         WHERE user_id = $1
+         ORDER BY changed_at DESC
+         LIMIT 100`,
+        [userId]
+      ),
+      query(
+        `SELECT id, login_field, login_value, success, failure_reason, ip_address, user_agent, created_at
+         FROM user_login_attempts
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 120`,
+        [userId]
+      ),
+      query(
+        `SELECT id, type, amount, status, payment_method, reference_id, metadata, created_at
+         FROM transactions
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 200`,
+        [userId]
+      ),
+    ]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const [txTotals, txCounts] = await Promise.all([
+      query(
+        `SELECT
+          COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed'), 0)::numeric AS total_deposit,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'withdrawal' AND status = 'completed'), 0)::numeric AS total_withdrawal,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'pending'), 0)::numeric AS pending_deposit,
+          COALESCE(SUM(amount) FILTER (WHERE type = 'withdrawal' AND status = 'pending'), 0)::numeric AS pending_withdrawal
+         FROM transactions
+         WHERE user_id = $1`,
+        [userId]
+      ),
+      query(
+        `SELECT
+          COUNT(*)::int AS total_transactions,
+          COUNT(*) FILTER (WHERE type = 'deposit')::int AS deposit_count,
+          COUNT(*) FILTER (WHERE type = 'withdrawal')::int AS withdrawal_count,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_transactions
+         FROM transactions
+         WHERE user_id = $1`,
+        [userId]
+      ),
+    ]);
+
+    const agg = aggregateResult.rows[0] || {};
+    const wonBets = Number(agg.won_bets || 0);
+    const lostBets = Number(agg.lost_bets || 0);
+    const settled = wonBets + lostBets;
+    const winRate = settled > 0 ? wonBets / settled : 0;
+    const profileChangeCount7d = profileChangesResult.rows.filter((r) => {
+      const changedAt = new Date(r.changed_at).getTime();
+      return changedAt >= Date.now() - 7 * 24 * 60 * 60 * 1000;
+    }).length;
+
+    const suspicious =
+      winRate >= 0.8 ||
+      profileChangeCount7d >= 3 ||
+      profileChangesResult.rows.filter((r) => ['full_name', 'email', 'phone'].includes(r.field_name)).length >= 3;
+
+    const loginAttempts = loginAttemptsResult.rows;
+    const loginSuccessCount = loginAttempts.filter((item) => item.success).length;
+    const loginFailureCount = loginAttempts.length - loginSuccessCount;
+    const lastFailedLoginAt = loginAttempts.find((item) => !item.success)?.created_at || null;
+
+    const recentTransactions = recentTransactionsResult.rows;
+    const txByStatus = recentTransactions.reduce((acc, item) => {
+      const key = String(item.status || 'unknown');
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const txByType = recentTransactions.reduce((acc, item) => {
+      const key = String(item.type || 'unknown');
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    return res.json({
+      user: userResult.rows[0],
+      highGainer: winRate >= 0.8,
+      suspicious,
+      stats: {
+        winRate,
+        totalBets: Number(agg.total_bets || 0),
+        wonBets,
+        lostBets,
+        pendingBets: Number(agg.pending_bets || 0),
+        avgOdds: String(agg.avg_odds || '0'),
+        settledStakeTotal: String(agg.settled_stake_total || '0'),
+        wonStakeTotal: String(agg.won_stake_total || '0'),
+        lostStakeTotal: String(agg.lost_stake_total || '0'),
+        totalDeposit: String(txTotals.rows[0]?.total_deposit || '0'),
+        totalWithdrawal: String(txTotals.rows[0]?.total_withdrawal || '0'),
+        pendingDeposit: String(txTotals.rows[0]?.pending_deposit || '0'),
+        pendingWithdrawal: String(txTotals.rows[0]?.pending_withdrawal || '0'),
+        totalTransactions: Number(txCounts.rows[0]?.total_transactions || 0),
+        depositCount: Number(txCounts.rows[0]?.deposit_count || 0),
+        withdrawalCount: Number(txCounts.rows[0]?.withdrawal_count || 0),
+        pendingTransactions: Number(txCounts.rows[0]?.pending_transactions || 0),
+        profileChangeCount7d,
+        loginSuccessCount,
+        loginFailureCount,
+        lastFailedLoginAt,
+      },
+      gameStats: gameStatsResult.rows,
+      profileChanges: profileChangesResult.rows,
+      loginAttempts,
+      recentTransactions,
+      transactionBreakdown: {
+        byStatus: txByStatus,
+        byType: txByType,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/bets', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT
+        b.id,
+        b.user_id,
+        u.username,
+        u.email,
+        b.amount,
+        b.odds,
+        b.status,
+        b.potential_win,
+        b.created_at,
+        b.settled_at
+      FROM bets b
+      LEFT JOIN users u ON u.id = b.user_id
+      ORDER BY b.created_at DESC`
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/bets/:id', requireAdminAuth, async (req, res) => {
+  const betId = Number(req.params.id);
+  const { status } = req.body || {};
+  const validStatuses = ['pending', 'won', 'lost', 'cancelled'];
+
+  if (!betId) {
+    return res.status(400).json({ error: 'Invalid bet id' });
+  }
+
+  if (!status || !validStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query(
+      'SELECT id, user_id, amount, potential_win, status FROM bets WHERE id = $1 FOR UPDATE',
+      [betId]
+    );
+    if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Bet not found' });
+    }
+
+    const bet = existing.rows[0];
+    if (bet.status !== 'pending' && status !== bet.status) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only pending bets can be settled' });
+    }
+
+    const settledAt = status === 'pending' ? null : new Date();
+    const result = await client.query('UPDATE bets SET status = $1, settled_at = $2 WHERE id = $3 RETURNING *', [status, settledAt, betId]);
+
+    if (bet.status === 'pending') {
+      if (status === 'won') {
+        await client.query('UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [bet.potential_win, bet.user_id]);
+        await client.query(
+          `INSERT INTO transactions (user_id, type, amount, status, payment_method, reference_id, metadata)
+           VALUES ($1, 'payout', $2, 'completed', 'bet_settlement', $3, $4::jsonb)`,
+          [bet.user_id, bet.potential_win, `BET-${betId}-WIN`, JSON.stringify({ action: 'bet_settle', result: 'won' })]
+        );
+      }
+
+      if (status === 'cancelled') {
+        await client.query('UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [bet.amount, bet.user_id]);
+        await client.query(
+          `INSERT INTO transactions (user_id, type, amount, status, payment_method, reference_id, metadata)
+           VALUES ($1, 'manual', $2, 'completed', 'bet_refund', $3, $4::jsonb)`,
+          [bet.user_id, bet.amount, `BET-${betId}-REFUND`, JSON.stringify({ action: 'bet_settle', result: 'cancelled_refund' })]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    return res.json(result.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/transactions', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT
+        t.id,
+        t.user_id,
+        u.username,
+        u.email,
+        t.type,
+        t.amount,
+        t.status,
+        t.payment_method,
+        t.reference_id,
+        t.created_at
+      FROM transactions t
+      LEFT JOIN users u ON u.id = t.user_id
+      ORDER BY t.created_at DESC`
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/transactions', requireAdminAuth, async (req, res) => {
+  const { user_id, type, amount, status = 'completed', reference_id, payment_method } = req.body || {};
+  const validTypes = ['deposit', 'withdrawal', 'payout', 'manual'];
+
+  if (!user_id || !type || !amount) {
+    return res.status(400).json({ error: 'user_id, type and amount are required' });
+  }
+
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ error: 'Invalid transaction type' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const userResult = await client.query('SELECT id, balance FROM users WHERE id = $1 FOR UPDATE', [user_id]);
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const numericAmount = Number(amount);
+    const currentBalance = Number(userResult.rows[0].balance || 0);
+    let nextBalance = currentBalance;
+
+    if (status === 'completed') {
+      if (type === 'deposit' || type === 'payout' || type === 'manual') {
+        nextBalance = currentBalance + numericAmount;
+      }
+      if (type === 'withdrawal') {
+        nextBalance = currentBalance - numericAmount;
+      }
+    }
+
+    const transactionResult = await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [user_id, type, numericAmount, status, reference_id || null, payment_method || null]
+    );
+
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user_id]);
+
+    await client.query('COMMIT');
+    return res.status(201).json(transactionResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/admin/transactions/:id', requireAdminAuth, async (req, res) => {
+  const transactionId = Number(req.params.id);
+  if (!transactionId) {
+    return res.status(400).json({ error: 'Invalid transaction id' });
+  }
+
+  try {
+    const existing = await query('SELECT id, status FROM transactions WHERE id = $1', [transactionId]);
+    if (!existing.rows.length) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    if (existing.rows[0].status === 'completed') {
+      return res.status(400).json({ error: 'Completed transactions cannot be deleted' });
+    }
+
+    await query('DELETE FROM transactions WHERE id = $1', [transactionId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/withdrawals/:id/decision', requireAdminAuth, async (req, res) => {
+  const transactionId = Number(req.params.id);
+  const { decision } = req.body || {};
+
+  if (!transactionId || !['approve', 'reject'].includes(decision)) {
+    return res.status(400).json({ error: 'Valid id and decision are required' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const txResult = await client.query(
+      `SELECT id, user_id, amount, status, type
+       FROM transactions
+       WHERE id = $1 FOR UPDATE`,
+      [transactionId]
+    );
+
+    if (txResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    const tx = txResult.rows[0];
+    if (tx.type !== 'withdrawal') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Not a withdrawal transaction' });
+    }
+
+    if (tx.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Withdrawal already processed' });
+    }
+
+    const finalStatus = decision === 'approve' ? 'completed' : 'cancelled';
+    await client.query('UPDATE transactions SET status = $1 WHERE id = $2', [finalStatus, transactionId]);
+
+    if (decision === 'approve') {
+      await client.query('UPDATE users SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [
+        tx.amount,
+        tx.user_id,
+      ]);
+    }
+
+    await client.query('COMMIT');
+    return res.json({ ok: true, transactionId, status: finalStatus });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/admin/bonuses', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT
+        bo.id,
+        bo.user_id,
+        u.username,
+        u.email,
+        bo.amount,
+        bo.type,
+        bo.expires_at,
+        bo.used,
+        bo.created_at
+      FROM bonuses bo
+      LEFT JOIN users u ON u.id = bo.user_id
+      ORDER BY bo.created_at DESC`
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/bonuses', requireAdminAuth, async (req, res) => {
+  const { user_id, amount, type, expires_at = null } = req.body || {};
+  if (!user_id || !amount || !type) {
+    return res.status(400).json({ error: 'user_id, amount and type are required' });
+  }
+
+  try {
+    const userResult = await query('SELECT id FROM users WHERE id = $1', [user_id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const bonusResult = await query(
+      'INSERT INTO bonuses (user_id, amount, type, expires_at, used) VALUES ($1, $2, $3, $4, false) RETURNING *',
+      [user_id, amount, type, expires_at]
+    );
+    return res.status(201).json(bonusResult.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/risk', requireAdminAuth, async (req, res) => {
+  try {
+    const [highOddsBets, topPendingExposureUsers, blockedButBettingUsers] = await Promise.all([
+      query('SELECT COUNT(*)::int AS count FROM bets WHERE odds >= 5'),
+      query(
+        `SELECT
+          u.id,
+          u.username,
+          u.email,
+          COALESCE(SUM(b.amount), 0)::numeric AS exposure
+        FROM users u
+        LEFT JOIN bets b ON b.user_id = u.id AND b.status = 'pending'
+        GROUP BY u.id
+        ORDER BY exposure DESC
+        LIMIT 10`
+      ),
+      query(
+        `SELECT COUNT(*)::int AS count
+         FROM users u
+         WHERE u.status = 'blocked'
+         AND EXISTS (
+           SELECT 1 FROM bets b WHERE b.user_id = u.id AND b.created_at >= NOW() - INTERVAL '7 days'
+         )`
+      ),
+    ]);
+
+    return res.json({
+      highOddsBets: highOddsBets.rows[0]?.count || 0,
+      blockedButBettingUsers: blockedButBettingUsers.rows[0]?.count || 0,
+      topPendingExposureUsers: topPendingExposureUsers.rows,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/content-sections', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM content_sections ORDER BY sort_order ASC, id ASC');
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/content-sections', requireAdminAuth, async (req, res) => {
+  const { slug, title, section_type = 'home', sort_order = 0, is_active = true } = req.body || {};
+  if (!slug || !title) {
+    return res.status(400).json({ error: 'slug and title are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO content_sections (slug, title, section_type, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [slug, title, section_type, sort_order, is_active]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Section slug already exists' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/content-sections/:id', requireAdminAuth, async (req, res) => {
+  const sectionId = Number(req.params.id);
+  const { title, section_type, sort_order, is_active } = req.body || {};
+
+  if (!sectionId) {
+    return res.status(400).json({ error: 'Invalid section id' });
+  }
+
+  try {
+    const current = await query('SELECT * FROM content_sections WHERE id = $1', [sectionId]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Section not found' });
+    }
+
+    const row = current.rows[0];
+    const result = await query(
+      `UPDATE content_sections
+       SET title = $1,
+           section_type = $2,
+           sort_order = $3,
+           is_active = $4,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5
+       RETURNING *`,
+      [
+        title ?? row.title,
+        section_type ?? row.section_type,
+        sort_order ?? row.sort_order,
+        typeof is_active === 'boolean' ? is_active : row.is_active,
+        sectionId,
+      ]
+    );
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/content-sections/:id', requireAdminAuth, async (req, res) => {
+  const sectionId = Number(req.params.id);
+  if (!sectionId) {
+    return res.status(400).json({ error: 'Invalid section id' });
+  }
+
+  try {
+    await query('DELETE FROM content_sections WHERE id = $1', [sectionId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/content-items', requireAdminAuth, async (req, res) => {
+  const sectionId = Number(req.query.section_id || 0);
+  try {
+    if (sectionId) {
+      const result = await query(
+        `SELECT ci.*, cs.slug AS section_slug, cs.title AS section_title
+         FROM content_items ci
+         LEFT JOIN content_sections cs ON cs.id = ci.section_id
+         WHERE ci.section_id = $1
+         ORDER BY ci.sort_order ASC, ci.id ASC`,
+        [sectionId]
+      );
+      return res.json(result.rows);
+    }
+
+    const result = await query(
+      `SELECT ci.*, cs.slug AS section_slug, cs.title AS section_title
+       FROM content_items ci
+       LEFT JOIN content_sections cs ON cs.id = ci.section_id
+       ORDER BY ci.created_at DESC`
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/content-items', requireAdminAuth, async (req, res) => {
+  const {
+    section_id,
+    title,
+    subtitle = null,
+    image_url = null,
+    target_url = null,
+    payload = {},
+    sort_order = 0,
+    is_active = true,
+  } = req.body || {};
+
+  if (!section_id || !title) {
+    return res.status(400).json({ error: 'section_id and title are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO content_items (section_id, title, subtitle, image_url, target_url, payload, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+       RETURNING *`,
+      [section_id, title, subtitle, image_url, target_url, JSON.stringify(payload || {}), sort_order, is_active]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/content-items/:id', requireAdminAuth, async (req, res) => {
+  const itemId = Number(req.params.id);
+  if (!itemId) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+
+  try {
+    const current = await query('SELECT * FROM content_items WHERE id = $1', [itemId]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const row = current.rows[0];
+    const body = req.body || {};
+    const result = await query(
+      `UPDATE content_items
+       SET title = $1,
+           subtitle = $2,
+           image_url = $3,
+           target_url = $4,
+           payload = $5::jsonb,
+           sort_order = $6,
+           is_active = $7,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $8
+       RETURNING *`,
+      [
+        body.title ?? row.title,
+        body.subtitle ?? row.subtitle,
+        body.image_url ?? row.image_url,
+        body.target_url ?? row.target_url,
+        JSON.stringify(body.payload ?? row.payload ?? {}),
+        body.sort_order ?? row.sort_order,
+        typeof body.is_active === 'boolean' ? body.is_active : row.is_active,
+        itemId,
+      ]
+    );
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/content-items/:id', requireAdminAuth, async (req, res) => {
+  const itemId = Number(req.params.id);
+  if (!itemId) {
+    return res.status(400).json({ error: 'Invalid item id' });
+  }
+
+  try {
+    await query('DELETE FROM content_items WHERE id = $1', [itemId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/payment-methods', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM payment_methods ORDER BY created_at DESC');
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/payment-methods', requireAdminAuth, async (req, res) => {
+  const {
+    name,
+    code,
+    method_type = 'both',
+    provider = null,
+    image_url = null,
+    account_number = null,
+    status = 'active',
+    min_amount = 0,
+    max_amount = 999999,
+    fee_percent = 0,
+  } = req.body || {};
+
+  if (!name || !code) {
+    return res.status(400).json({ error: 'name and code are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO payment_methods (name, code, method_type, provider, image_url, account_number, status, min_amount, max_amount, fee_percent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [name, code, method_type, provider, image_url, account_number, status, min_amount, max_amount, fee_percent]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Payment method code already exists' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/payment-methods/:id', requireAdminAuth, async (req, res) => {
+  const methodId = Number(req.params.id);
+  if (!methodId) {
+    return res.status(400).json({ error: 'Invalid payment method id' });
+  }
+
+  try {
+    const current = await query('SELECT * FROM payment_methods WHERE id = $1', [methodId]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Payment method not found' });
+    }
+
+    const row = current.rows[0];
+    const body = req.body || {};
+
+    const result = await query(
+      `UPDATE payment_methods
+       SET name = $1,
+           code = $2,
+           method_type = $3,
+           provider = $4,
+           image_url = $5,
+           account_number = $6,
+           status = $7,
+           min_amount = $8,
+           max_amount = $9,
+           fee_percent = $10,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $11
+       RETURNING *`,
+      [
+        body.name ?? row.name,
+        body.code ?? row.code,
+        body.method_type ?? row.method_type,
+        body.provider ?? row.provider,
+        body.image_url ?? row.image_url,
+        body.account_number ?? row.account_number,
+        body.status ?? row.status,
+        body.min_amount ?? row.min_amount,
+        body.max_amount ?? row.max_amount,
+        body.fee_percent ?? row.fee_percent,
+        methodId,
+      ]
+    );
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/payment-methods/:id', requireAdminAuth, async (req, res) => {
+  const methodId = Number(req.params.id);
+  if (!methodId) {
+    return res.status(400).json({ error: 'Invalid payment method id' });
+  }
+
+  try {
+    await query('DELETE FROM payment_methods WHERE id = $1', [methodId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/game-providers', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM game_providers ORDER BY created_at DESC');
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/game-providers', requireAdminAuth, async (req, res) => {
+  const { name, api_endpoint, api_key = null, supported_sections = 'casino', status = 'active' } = req.body || {};
+
+  if (!name || !api_endpoint) {
+    return res.status(400).json({ error: 'name and api_endpoint are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO game_providers (name, api_endpoint, api_key, supported_sections, status)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [name, api_endpoint, api_key, supported_sections, status]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'Provider already exists' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/game-providers/:id', requireAdminAuth, async (req, res) => {
+  const providerId = Number(req.params.id);
+  if (!providerId) {
+    return res.status(400).json({ error: 'Invalid provider id' });
+  }
+
+  try {
+    const current = await query('SELECT * FROM game_providers WHERE id = $1', [providerId]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+
+    const row = current.rows[0];
+    const body = req.body || {};
+
+    const result = await query(
+      `UPDATE game_providers
+       SET name = $1,
+           api_endpoint = $2,
+           api_key = $3,
+           supported_sections = $4,
+           status = $5,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6
+       RETURNING *`,
+      [
+        body.name ?? row.name,
+        body.api_endpoint ?? row.api_endpoint,
+        body.api_key ?? row.api_key,
+        body.supported_sections ?? row.supported_sections,
+        body.status ?? row.status,
+        providerId,
+      ]
+    );
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/game-providers/:id', requireAdminAuth, async (req, res) => {
+  const providerId = Number(req.params.id);
+  if (!providerId) {
+    return res.status(400).json({ error: 'Invalid provider id' });
+  }
+
+  try {
+    await query('DELETE FROM game_providers WHERE id = $1', [providerId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/game-providers/:id/test', requireAdminAuth, async (req, res) => {
+  const providerId = Number(req.params.id);
+  if (!providerId) {
+    return res.status(400).json({ error: 'Invalid provider id' });
+  }
+
+  try {
+    const providerRes = await query('SELECT * FROM game_providers WHERE id = $1', [providerId]);
+    if (providerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+
+    const provider = providerRes.rows[0];
+    const ok = Boolean(provider.api_endpoint) && Boolean(provider.api_key);
+
+    if (ok) {
+      await query('UPDATE game_providers SET last_sync_at = CURRENT_TIMESTAMP WHERE id = $1', [providerId]);
+    }
+
+    return res.json({
+      ok,
+      provider: provider.name,
+      message: ok
+        ? 'Connection check passed and provider marked synced.'
+        : 'Connection check failed. Set API endpoint and API key.',
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/seo-pages', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM seo_pages ORDER BY path ASC');
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/seo-pages', requireAdminAuth, async (req, res) => {
+  const { path, title, description = null, keywords = null, og_image = null, no_index = false } = req.body || {};
+  if (!path || !title) {
+    return res.status(400).json({ error: 'path and title are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO seo_pages (path, title, description, keywords, og_image, no_index)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [path, title, description, keywords, og_image, no_index]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'SEO path already exists' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/admin/seo-pages/:id', requireAdminAuth, async (req, res) => {
+  const pageId = Number(req.params.id);
+  if (!pageId) {
+    return res.status(400).json({ error: 'Invalid seo page id' });
+  }
+
+  try {
+    const current = await query('SELECT * FROM seo_pages WHERE id = $1', [pageId]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'SEO page not found' });
+    }
+
+    const row = current.rows[0];
+    const body = req.body || {};
+
+    const result = await query(
+      `UPDATE seo_pages
+       SET title = $1,
+           description = $2,
+           keywords = $3,
+           og_image = $4,
+           no_index = $5,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6
+       RETURNING *`,
+      [
+        body.title ?? row.title,
+        body.description ?? row.description,
+        body.keywords ?? row.keywords,
+        body.og_image ?? row.og_image,
+        typeof body.no_index === 'boolean' ? body.no_index : row.no_index,
+        pageId,
+      ]
+    );
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/seo-pages/:id', requireAdminAuth, async (req, res) => {
+  const pageId = Number(req.params.id);
+  if (!pageId) {
+    return res.status(400).json({ error: 'Invalid seo page id' });
+  }
+
+  try {
+    await query('DELETE FROM seo_pages WHERE id = $1', [pageId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/site-settings', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await query('SELECT key, value, updated_at FROM site_settings ORDER BY key ASC');
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/site-settings', requireAdminAuth, async (req, res) => {
+  const { key, value } = req.body || {};
+  if (!key) {
+    return res.status(400).json({ error: 'key is required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO site_settings (key, value, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (key) DO UPDATE SET
+         value = EXCLUDED.value,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [key, value ?? '']
+    );
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/site-settings/bulk', requireAdminAuth, async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: 'items array is required' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO site_settings (key, value, updated_at)
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (key) DO UPDATE SET
+           value = EXCLUDED.value,
+           updated_at = CURRENT_TIMESTAMP`,
+        [item.key, item.value ?? '']
+      );
+    }
+    await client.query('COMMIT');
+    return res.json({ ok: true, count: items.length });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/users', async (req, res) => {
+  try {
+    const result = await query('SELECT id, username, email, balance, status, created_at FROM users');
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const result = await query('SELECT id, username, email, balance, status, created_at FROM users WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/users/:id/bets', async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM bets WHERE user_id = $1 ORDER BY created_at DESC', [req.params.id]);
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/users/:id/bonuses', async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM bonuses WHERE user_id = $1 AND used = false', [req.params.id]);
+    return res.json(result.rows);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/bets', async (req, res) => {
+  const { user_id, amount, odds, game_name = 'Unknown', metadata = {} } = req.body;
+
+  if (!user_id || !amount || !odds) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    const potential_win = amount * odds;
+    const result = await query(
+      'INSERT INTO bets (user_id, amount, odds, potential_win, game_name, metadata) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING *',
+      [user_id, amount, odds, potential_win, game_name, JSON.stringify(metadata || {})]
+    );
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post(['/GetBalance', '/getbalance'], async (req, res) => {
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 4, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const user = await findUserBySeamlessName(req.body);
+    if (!user) {
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Member not found' }));
+    }
+
+    if (String(user.status || '').toLowerCase() !== 'active') {
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 2002, ErrorMessage: 'Member suspended' }));
+    }
+
+    return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance }));
+  } catch (error) {
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  }
+});
+
+app.post(['/Deduct', '/deduct'], async (req, res) => {
+  const client = await getClient();
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 4, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    const refNo = findReferenceNo(req.body);
+    const amount = findAmount(req.body);
+
+    if (!username || !refNo || amount <= 0) {
+      return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
+    }
+
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `SELECT id, username, balance, status
+       FROM users
+       WHERE LOWER(username) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [String(username)]
+    );
+
+    if (!userResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Member not found' }));
+    }
+
+    const user = userResult.rows[0];
+    if (String(user.status || '').toLowerCase() !== 'active') {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 2002, ErrorMessage: 'Member suspended' }));
+    }
+
+    const existing = seamlessState.get(refNo);
+    if (existing) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    if (currentBalance < amount) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: currentBalance, ErrorCode: 5, ErrorMessage: 'Insufficient balance' }));
+    }
+
+    const nextBalance = Number((currentBalance - amount).toFixed(5));
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+       VALUES ($1, 'withdrawal', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+      [user.id, amount, `SW-${refNo}`, JSON.stringify({ action: 'seamless_deduct' })]
+    );
+
+    seamlessState.set(refNo, {
+      username: user.username,
+      user_id: user.id,
+      amount,
+      status: 'running',
+      settled_amount: 0,
+      win_loss: 0,
+      cancel_count: 0,
+      rollback_count: 0,
+      last_action: 'deduct',
+      balance_after: nextBalance,
+    });
+
+    await client.query('COMMIT');
+    return res.json(seamlessResponse({ AccountName: user.username, BetAmount: amount.toFixed(1), Balance: nextBalance }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  } finally {
+    client.release();
+  }
+});
+
+app.post(['/Settle', '/settle'], async (req, res) => {
+  const client = await getClient();
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 4, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    const refNo = findReferenceNo(req.body);
+    const rawWinLoss = getBodyValue(req.body, 'WinLoss', 'WinLoseAmount', 'Amount', 'PayoutAmount');
+    const winLoss = Number(rawWinLoss || 0);
+    if (!username || !refNo) {
+      return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
+    }
+
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `SELECT id, username, balance, status
+       FROM users
+       WHERE LOWER(username) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [String(username)]
+    );
+
+    if (!userResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Member not found' }));
+    }
+
+    const user = userResult.rows[0];
+    const existing = seamlessState.get(refNo);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
+    }
+
+    if (existing && existing.status === 'settled') {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 2001, ErrorMessage: 'Already settled' }));
+    }
+
+    if (existing && existing.status === 'void') {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 2002, ErrorMessage: 'Already canceled' }));
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    const nextBalance = Number((currentBalance + winLoss).toFixed(5));
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+       VALUES ($1, 'payout', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+      [user.id, Math.abs(winLoss), `SW-${refNo}-SETTLE`, JSON.stringify({ action: 'seamless_settle', win_loss: winLoss })]
+    );
+
+    seamlessState.set(refNo, {
+      ...(existing || { username: user.username, user_id: user.id, amount: 0 }),
+      status: 'settled',
+      balance_after: nextBalance,
+      win_loss: winLoss,
+      settled_amount: winLoss,
+      last_action: 'settle',
+    });
+
+    await client.query('COMMIT');
+    return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  } finally {
+    client.release();
+  }
+});
+
+app.post(['/Cancel', '/cancel'], async (req, res) => {
+  const client = await getClient();
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 4, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    const refNo = findReferenceNo(req.body);
+    if (!username || !refNo) {
+      return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
+    }
+
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `SELECT id, username, balance
+       FROM users
+       WHERE LOWER(username) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [String(username)]
+    );
+
+    if (!userResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Member not found' }));
+    }
+
+    const user = userResult.rows[0];
+    const existing = seamlessState.get(refNo);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
+    }
+
+    if (existing.status === 'void') {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 2002, ErrorMessage: 'Already canceled' }));
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    const stake = Number(existing.amount || 0);
+    const settledAmount = Number(existing.win_loss || 0);
+    const netChange = existing.status === 'settled' ? stake - settledAmount : stake;
+    const nextBalance = Number((currentBalance + netChange).toFixed(5));
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+       VALUES ($1, 'payout', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+      [user.id, Math.abs(netChange), `SW-${refNo}-ROLLBACK`, JSON.stringify({ action: 'seamless_rollback', net_change: netChange })]
+    );
+
+    seamlessState.set(refNo, {
+      ...existing,
+      status: 'void',
+      cancel_count: Number(existing.cancel_count || 0) + 1,
+      last_action: 'cancel',
+      balance_after: nextBalance,
+    });
+
+    await client.query('COMMIT');
+    return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  } finally {
+    client.release();
+  }
+});
+
+app.post(['/Rollback', '/rollback'], async (req, res) => {
+  const client = await getClient();
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 4, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    const refNo = findReferenceNo(req.body);
+    if (!username || !refNo) {
+      return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
+    }
+
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `SELECT id, username, balance
+       FROM users
+       WHERE LOWER(username) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [String(username)]
+    );
+
+    if (!userResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Member not found' }));
+    }
+
+    const user = userResult.rows[0];
+    const existing = seamlessState.get(refNo);
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
+    }
+
+    if (existing.last_action === 'rollback' || Number(existing.rollback_count || 0) > 0) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 2003, ErrorMessage: 'Already rollback' }));
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    const stake = Number(existing.amount || 0);
+    const winLoss = Number(existing.win_loss || 0);
+    let nextBalance = currentBalance;
+    let metadata = { action: 'seamless_rollback', win_loss: winLoss };
+
+    if (existing.status === 'settled') {
+      nextBalance = Number((currentBalance - winLoss).toFixed(5));
+    } else if (existing.status === 'void' && existing.last_action === 'cancel') {
+      // Reopen a canceled bet by reversing the prior cancel refund.
+      nextBalance = Number((currentBalance - stake).toFixed(5));
+      metadata = { action: 'seamless_rollback_cancel_reopen', stake };
+    } else {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 6, ErrorMessage: 'Cannot rollback current status' }));
+    }
+
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+       VALUES ($1, 'withdrawal', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+      [user.id, Math.abs(currentBalance - nextBalance), `SW-${refNo}-ROLLBACK`, JSON.stringify(metadata)]
+    );
+
+    seamlessState.set(refNo, {
+      ...existing,
+      status: 'running',
+      rollback_count: Number(existing.rollback_count || 0) + 1,
+      last_action: 'rollback',
+      balance_after: nextBalance,
+    });
+
+    await client.query('COMMIT');
+    return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  } finally {
+    client.release();
+  }
+});
+
+app.post(['/Bonus', '/bonus'], async (req, res) => {
+  const client = await getClient();
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 2003, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    const refNo = findReferenceNo(req.body) || `BONUS-${Date.now()}`;
+    const amount = findAmount(req.body);
+    if (!username || amount <= 0) {
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Invalid request data' }));
+    }
+
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `SELECT id, username, balance
+       FROM users
+       WHERE LOWER(username) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [String(username)]
+    );
+
+    if (!userResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ ErrorCode: 2001, ErrorMessage: 'Member not found' }));
+    }
+
+    const user = userResult.rows[0];
+    if (seamlessState.has(refNo)) {
+      await client.query('ROLLBACK');
+      const existing = seamlessState.get(refNo);
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after }));
+    }
+
+    const currentBalance = Number(user.balance || 0);
+    const nextBalance = Number((currentBalance + amount).toFixed(5));
+    await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+    await client.query(
+      `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+       VALUES ($1, 'deposit', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+      [user.id, amount, `SW-${refNo}-BONUS`, JSON.stringify({ action: 'seamless_bonus' })]
+    );
+
+    seamlessState.set(refNo, {
+      username: user.username,
+      user_id: user.id,
+      amount,
+      status: 'settled',
+      balance_after: nextBalance,
+      payout: amount,
+    });
+
+    await client.query('COMMIT');
+    return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  } finally {
+    client.release();
+  }
+});
+
+app.post(['/GetBetStatus', '/getbetstatus'], async (req, res) => {
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json({ ErrorCode: '4', ErrorMessage: 'Invalid CompanyKey' });
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    if (!username) {
+      return res.json({ ErrorCode: '3', ErrorMessage: 'Username is required' });
+    }
+
+    const refNo = findReferenceNo(req.body);
+    const existing = refNo ? seamlessState.get(refNo) : null;
+    if (!existing) {
+      return res.json({
+        TransferCode: refNo,
+        TransactionId: refNo,
+        Status: 'Unknown',
+        ErrorCode: '6',
+        ErrorMessage: 'Bet not found',
+      });
+    }
+
+    return res.json({
+      TransferCode: refNo,
+      TransactionId: refNo,
+      Status: mapSeamlessStatus(existing.status),
+      ErrorCode: '0',
+      ErrorMessage: 'No Error',
+    });
+  } catch (error) {
+    return res.json({ ErrorCode: '1', ErrorMessage: error.message || 'Internal error' });
+  }
+});
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+const startServer = async () => {
+  try {
+    await initializeAdminSchema();
+    app.listen(PORT, () => {
+      console.log(`Betwin API running on http://localhost:${PORT}`);
+      console.log(`Database: ${process.env.DATABASE_HOST}:${process.env.DATABASE_PORT}/${process.env.DATABASE_NAME}`);
+    });
+  } catch (error) {
+    console.error('Failed to initialize schema:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();

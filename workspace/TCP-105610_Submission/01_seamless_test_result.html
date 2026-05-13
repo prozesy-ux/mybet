@@ -1,0 +1,122 @@
+﻿<html><head>
+    </head><body><div class="header">
+        <h1>Seamless Wallet Testing</h1>
+        <p>Step 1 : Enter the necessary parameters</p>
+        <p>Step 2 : Choose the product type you want to test</p>
+        <p>Step 3 : Press the 'Start Testing' button</p>
+        <p>Step 4 : According the report fix the api logic until Need To Fix Count equal to 0</p>
+        <br>
+        <p>After start test, page will reload every 30 seconds, you can keep check the result. Or can wait all test are done will have a page alert to let you know.</p>
+        <p>Hint : </p>
+        <p>If 'Checked' column shows 'Need to fix !'</p>
+        <p>You need to check the steps above and you will know how to fix it</p>
+        <p>ex : If NO 'Sports-2-7' need to fix, then you need to check NO 'Sports-2-1' to NO 'Sports-2-7', TestDescription will told you the testing flow</p>
+        <h1>Resend Mechanism</h1>
+        <p>Normally we do have the resend mechanism in our API.</p>
+        <p>When your side response with ErrorCode that is not equal to 0, we will do the resend with the same API request.</p>
+        <p>And will stop resend once your side response with ErrorCode in (6, 2001, 2002, 2003).</p>
+        <p>----------------------------------------------------------------------------</p>
+    </div>
+
+
+<div class="body">
+    <div class="col-md-4">
+<form action="/WL/StopSendingTest" method="post"><input id="StopQueryKey" name="StopQueryKey" style="display:none;" type="text" value="FVbxvlUX">            <input type="submit" value="Stop Previous Sending" id="stopSubmitBtn">
+</form>        <form action="/" method="post">            <h2>
+                Necessary parameters
+            </h2>
+            <p>
+                Your domain :
+                <input id="domainName" name="domainName" type="text" value="https://bbece1024249fc.lhr.life">
+                /GetBalance etc.
+            </p>
+            <p>
+                Your companyKey :
+                <input id="companyKey" name="companyKey" type="text" value="SWKEY-REAL-0513">
+            </p>
+            <p>
+                Test UserName :
+                <input id="userName" name="userName" type="text" value="swfix_0513final1">
+                (Need 500 balance in the account)
+            </p>
+            <h2>
+                Product type
+            </h2>
+            <p>
+                <input checked="checked" id="isTestingSports" name="isTestingSports" type="checkbox" value="true"><input name="isTestingSports" type="hidden" value="false">
+                Test Sports
+            </p>
+            <p>
+                <input checked="checked" id="isTestingGame" name="isTestingGame" type="checkbox" value="true"><input name="isTestingGame" type="hidden" value="false">
+                Test SBO RNG Games
+            </p>
+            <p>
+                <input checked="checked" id="isTestingVirtualSports" name="isTestingVirtualSports" type="checkbox" value="true"><input name="isTestingVirtualSports" type="hidden" value="false">
+                Test VirtualSports
+            </p>
+            <p>
+                <input checked="checked" id="isTestingCasino" name="isTestingCasino" type="checkbox" value="true"><input name="isTestingCasino" type="hidden" value="false">
+                Test Casino
+            </p>
+            <p>
+                <input checked="checked" id="isTestingTipAndBonus" name="isTestingTipAndBonus" type="checkbox" value="true"><input name="isTestingTipAndBonus" type="hidden" value="false">
+                Test Bonus
+            </p>
+            <p>
+                <input checked="checked" id="isTesting3rdWM" name="isTesting3rdWM" type="checkbox" value="true"><input name="isTesting3rdWM" type="hidden" value="false">
+                Test 3rd Wan Mei
+            </p>
+            <p style="display: none"> 
+                <input checked="checked" id="isTestingReturnStake" name="isTestingReturnStake" type="checkbox" value="true"><input name="isTestingReturnStake" type="hidden" value="false"> 
+                Test Return Stake Api 
+            </p> 
+            <input type="submit" value="Start Testing" id="submitBtn">
+</form>    </div>
+</div>
+<div>
+    <h3>
+        Web Exception :
+    </h3>
+    <p>
+        
+    </p>
+</div>
+<div>
+    <h3>
+        Need To Fix Count : 0
+    </h3>
+</div>
+<div>
+    <ul>
+        <h2>
+            Report
+        </h2>
+        <table style="border: 3px #cccccc solid;" cellpadding="10" border="1">
+            <tbody><tr>
+                <th>Checked</th>
+                <th>NO</th>
+                <th>Method</th>
+                <th>TestDescription</th>
+                <th>RequestBody</th>
+                <th>Your Response</th>
+                <th>CorrectResponse</th>
+            </tr>
+        </tbody></table>
+    </ul>
+</div>
+<div style="display: none">
+    <input id="needToCallBackendToCheck" value="value">
+    <input id="areAllTestsDone">
+    <input id="ResultQueryKey" value="FVbxvlUX">
+<form action="/WL/CheckForResultUpdateByKey" id="ReloadForm" method="post"><input id="QueryKey" name="QueryKey" type="text" value="FVbxvlUX"></form></div>
+<script>
+    function triggerCheckUpdateFormSubmit() {
+        var needToCallBackendToCheck = document.getElementById("needToCallBackendToCheck").value;
+        if (!needToCallBackendToCheck) return;
+        console.log("Submit reload form");
+        document.getElementById("ReloadForm").submit();
+    }
+    setInterval(triggerCheckUpdateFormSubmit, 30000);
+    if (!needToCallBackendToCheck) document.getElementById("submitBtn").disabled = true;
+    if (document.getElementById("areAllTestsDone").value) alert("All tests are done.\n You can check the result below.");
+</script></body></html>

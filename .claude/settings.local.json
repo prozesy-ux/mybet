@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\mpro\\\\Desktop\\\\1win\\\\src\\\\components\")",
+      "Bash(dir \"C:\\\\Users\\\\mpro\\\\Desktop\\\\1win\\\\src\\\\sections\")",
+      "Bash(dir \"C:\\\\Users\\\\mpro\\\\Desktop\\\\1win\\\\src\\\\sections\\\\AdminPanel\")",
+      "Bash(npm run *)",
+      "Bash(node server.js)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
