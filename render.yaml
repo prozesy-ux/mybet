@@ -36,6 +36,18 @@ services:
         scope: all
       - key: CORS_ORIGIN
         scope: all
+      - key: SW_API_BASE_URL
+        scope: all
+      - key: SW_API_COMPANY_KEY
+        scope: all
+      - key: SW_API_SERVER_ID
+        value: GPZES01
+        scope: all
+      - key: SW_API_AGENT_USERNAME
+        scope: all
+      - key: SW_API_LANG
+        value: en
+        scope: all
 
   - type: static
     name: mybet-frontend

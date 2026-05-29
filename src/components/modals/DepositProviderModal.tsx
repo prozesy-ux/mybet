@@ -48,6 +48,18 @@ export const DepositProviderModal = () => {
         payment_method: provider.id,
         provider_name: provider.name,
       });
+
+      const dynamicResponse = response as unknown as Record<string, unknown>;
+      const paymentUrl =
+        response.payUrl ||
+        (typeof dynamicResponse.PayUrl === "string" ? dynamicResponse.PayUrl : undefined) ||
+        (typeof dynamicResponse.payment_url === "string" ? dynamicResponse.payment_url : undefined);
+
+      if (paymentUrl) {
+        window.location.assign(paymentUrl);
+        return;
+      }
+
       await refreshUser();
       setInfo(response.message || "Deposit request submitted for admin approval.");
       setAmount(String(minAmount));

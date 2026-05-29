@@ -16,6 +16,7 @@ import { SportsPage } from "@/sections/SportsPage";
 import { PromotionsPage } from "@/sections/PromotionsPage";
 import { AdminPanelPage } from "@/sections/AdminPanel";
 import { StartTestPage } from "@/sections/StartTestPage";
+import { CasinoPage } from "@/sections/CasinoPage";
 
 const HomePage = () => {
   return (
@@ -105,9 +106,9 @@ export const App = () => {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
-      <Route path="/casino" element={<HomePage />} />
+      <Route path="/casino" element={<PageLayout hideFooter><CasinoPage /></PageLayout>} />
       <Route path="/free-money" element={<PageLayout><FreeMoneyPage /></PageLayout>} />
-      <Route path="/sports" element={<PageLayout><SportsPage /></PageLayout>} />
+      <Route path="/sports" element={<PageLayout hideFooter><SportsPage /></PageLayout>} />
       <Route path="/promotions" element={<PageLayout><PromotionsPage /></PageLayout>} />
       <Route path="/blog" element={<PageLayout><BlogPage /></PageLayout>} />
       <Route path="/bonus" element={<PageLayout><BonusPage /></PageLayout>} />

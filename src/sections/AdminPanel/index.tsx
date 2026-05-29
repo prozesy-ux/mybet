@@ -1281,7 +1281,15 @@ const AdminDashboard = ({ onLogout }: { onLogout: () => void }) => {
                   </div>
                 </Panel>
 
-                <Panel title={`Providers (${providers.length})`}>
+                <Panel title={`Providers (${providers.length})`} toolbar={
+                  <button
+                    type="button"
+                    onClick={() => void handle(() => adminApi.syncLiveGameProviders())}
+                    className={pBtn}
+                  >
+                    Sync Live Providers
+                  </button>
+                }>
                   <thead><tr><Th>ID</Th><Th>Name</Th><Th>Endpoint</Th><Th>Sections</Th><Th>Status</Th><Th>Last Sync</Th><Th>Action</Th></tr></thead>
                   <tbody>
                     {providers.map((p) => (
@@ -1476,6 +1484,13 @@ const AdminDashboard = ({ onLogout }: { onLogout: () => void }) => {
                     if (!window.confirm("Reset all casino games to the 30 default mock titles?")) return;
                     void handle(() => adminApi.seedCasinoGames());
                   }} className={dBtn}>Re-seed 30 Mock Games</button>
+                  <button
+                    type="button"
+                    onClick={() => void handle(() => adminApi.syncLiveCasinoGames())}
+                    className={pBtn}
+                  >
+                    Sync Live Casino Games
+                  </button>
                 </div>
 
                 {/* Games table */}

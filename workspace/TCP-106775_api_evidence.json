@@ -1,0 +1,99 @@
+﻿{
+    "generatedAt":  "2026-05-23T20:31:50.9794566+05:30",
+    "base":  "https://ex-api-demo-yy.568win.com",
+    "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+    "serverId":  "GPZES01",
+    "realBet":  {
+                    "refNo":  "4937968",
+                    "orderTimeGmtMinus4":  "2026-05-23T10:58:54.707",
+                    "status":  "void",
+                    "stake":  10.0,
+                    "username":  "baje247pl01"
+                },
+    "getBetListByModify":  {
+                               "endpoint":  "/web-root/restricted/report/v2/get-bet-list-by-modify-date.aspx",
+                               "windowUtcZ":  {
+                                                   "startDate":  "2026-05-23T14:40:00Z",
+                                                   "endDate":  "2026-05-23T15:20:00Z",
+                                                   "resultCount":  0,
+                                                   "error":  {
+                                                                 "id":  0,
+                                                                 "msg":  "No Error"
+                                                             }
+                                               },
+                               "windowGmtMinus4":  {
+                                                       "startDate":  "2026-05-23T10:40:00-04:00",
+                                                       "endDate":  "2026-05-23T11:20:00-04:00",
+                                                       "resultCount":  1,
+                                                       "error":  {
+                                                                     "id":  0,
+                                                                     "msg":  "No Error"
+                                                                 }
+                                                   },
+                               "windowGmtMinus4Downline":  {
+                                                              "startDate":  "2026-05-23T10:40:00-04:00",
+                                                              "endDate":  "2026-05-23T11:20:00-04:00",
+                                                              "isGetDownline":  true,
+                                                              "resultCount":  1,
+                                                              "error":  {
+                                                                            "id":  0,
+                                                                            "msg":  "No Error"
+                                                                        }
+                                                          }
+                           },
+    "getBetListByRefNos":  {
+                               "endpoint":  "/web-root/restricted/report/get-bet-list-by-refnos.aspx",
+                               "request":  {
+                                               "refNos":  "4937968",
+                                               "portfolio":  "SportsBook",
+                                               "language":  "en"
+                                           },
+                               "response":  {
+                                                "error":  {
+                                                              "id":  0,
+                                                              "msg":  "No Error"
+                                                          },
+                                                "resultCount":  1,
+                                                "firstRecord":  {
+                                                                    "refNo":  "4937968",
+                                                                    "username":  "baje247pl01",
+                                                                    "status":  "running",
+                                                                    "orderTime":  "2026-05-23T10:58:54.707",
+                                                                    "modifyDate":  "2026-05-23T10:58:56.193",
+                                                                    "stake":  10.0,
+                                                                    "winLost":  0.0,
+                                                                    "sportsType":  "Table Tennis"
+                                                                }
+                                            }
+                           },
+    "getBetPayload":  {
+                          "endpoint":  "/web-root/restricted/report/get-bet-payload.aspx",
+                          "request":  {
+                                          "Refno":  "4937968",
+                                          "Portfolio":  "SportsBook",
+                                          "Language":  "en"
+                                      },
+                          "response":  {
+                                           "error":  {
+                                                         "id":  0,
+                                                         "msg":  "No Error"
+                                                     },
+                                           "url":  "https://sports-demo.ggppqqgg.com/web-root/public/orderList/singleBetDetail.aspx?encodedTransId=rHOjSxLm0TKHcfq08A8NBQ%3d%3d\u0026language=en"
+                                       }
+                      },
+    "resendOrder":  {
+                        "endpoint":  "/web-root/restricted/seamless-wallet/resend-order",
+                        "request":  {
+                                        "txnId":  "4937968",
+                                        "portfolio":  "SportsBook"
+                                    },
+                        "response":  {
+                                         "error":  {
+                                                       "id":  0,
+                                                       "msg":  "No Error"
+                                                   },
+                                         "resendDetailCount":  1,
+                                         "note":  "Successful resend after order reached void status."
+                                     }
+                    }
+}

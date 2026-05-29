@@ -1,0 +1,85 @@
+﻿{
+    "generatedAt":  "2026-05-23T21:29:47.6250891+05:30",
+    "requestKey":  "CB768EF40A78496AAB6815E1C92A548D",
+    "username":  "baje247pl01",
+    "endpoint":  "/web-root/restricted/player/v2/login.aspx",
+    "results":  [
+                    {
+                        "name":  "LC_Casino",
+                        "portfolio":  "Casino",
+                        "gpId":  0,
+                        "gameId":  1,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "//lobby-demo.ggppqqgg.com/welcome.aspx?token=37716797.EsCDnCKIyWjGsCiqSYLjCLBgH\u0026sb=sports-demo.ggppqqgg.com\u0026locale=en\u0026device=d",
+                        "serverId":  "YY-demoanduat"
+                    },
+                    {
+                        "name":  "RNG_Games",
+                        "portfolio":  "Games",
+                        "gpId":  0,
+                        "gameId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "//rng-demo.ggppqqgg.com/web-root/public/?token=37716798.JottYuxfeSWfHlOBfUysFw\u0026gameid=0",
+                        "serverId":  "YY-demoanduat"
+                    },
+                    {
+                        "name":  "SBO_Slots",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  14,
+                        "gameId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "https://gpos-demo.ggppqqgg.com/(S(jbjzkmrzjgktmcikjhqfrmnb))/CreativeGamingLobby?gp=14\u0026displayType=2\u0026gameType=All\u0026isOpenGamewithPopUp=False\u0026lang=EN",
+                        "serverId":  "YY-demoanduat"
+                    },
+                    {
+                        "name":  "568winGame",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  1029,
+                        "gameId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "https://ulobby-uat.biliandadagipie.com?token=93e4483e-a1d5-47f6-af2a-5899703fd28f\u0026gpid=1029\u0026lang=EN",
+                        "serverId":  "YY-demoanduat"
+                    },
+                    {
+                        "name":  "AFB_Game",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  1016,
+                        "gameId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "https://ulobby-uat.biliandadagipie.com?token=b05a8b1d-3e8b-4d72-89ba-e507f2862ce1\u0026gpid=1016\u0026lang=EN",
+                        "serverId":  "YY-demoanduat"
+                    },
+                    {
+                        "name":  "FunkyGame",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  16,
+                        "gameId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "https://ulobby-uat.biliandadagipie.com?token=dc5e0b06-4341-404b-8889-451f4ba14d3e\u0026gpid=16\u0026lang=EN",
+                        "serverId":  "YY-demoanduat"
+                    },
+                    {
+                        "name":  "AFB_Sportsbook",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "gpId":  1015,
+                        "gameId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "hasUrl":  true,
+                        "url":  "https://api.afb166.com/Public/Validate.aspx?sk=W0\u0026us=50601sbons1643528\u0026k=05a864ab5a1348688607aa6cd97b32b8\u0026device=d\u0026oddsmode=\u0026lang=EN-US\u0026currencyName=USD\u0026IsHideChipSet=0\u0026print_txt=AFBSPORT\u0026ismmy=0",
+                        "serverId":  "YY-demoanduat"
+                    }
+                ]
+}

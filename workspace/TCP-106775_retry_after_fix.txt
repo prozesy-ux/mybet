@@ -1,0 +1,16 @@
+Hello team,
+
+Update on TCP-106775:
+
+We identified and fixed a callback-side username format mismatch on our integration.
+- Your sportsbook may send prefixed usernames (example: 50601yy_baje247pl01).
+- We now normalize and resolve both formats correctly.
+
+Validation from our side:
+- GetBalance (Username: baje247pl01) => ErrorCode 0, No Error
+- GetBalance (Username: 50601yy_baje247pl01) => ErrorCode 0, No Error
+
+Could you please retry the sportsbook balance/live-bet flow from your side now?
+Once your retry passes, we will immediately complete and submit the final 5.4/5.6/5.10 + 7.2 evidence and Back Office proofs.
+
+Thank you.

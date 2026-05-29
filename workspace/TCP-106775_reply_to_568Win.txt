@@ -1,0 +1,18 @@
+Hello team,
+
+Thank you for enabling the SW endpoint URL in staging.
+
+We confirm we will execute the requested TCP-106775 test list in order:
+1) API 3.2.1 New Login + place bet
+2) API 5 report integration (5.4, 5.6, 5.10) with DB storage
+3) Back Office verification by player search
+4) Monitoring -> Running Bets (16.1) verification
+5) Report -> Win/Loss (4.1) verification
+6) API 7.3 Regenerate Company Key
+7) API 7.4 Get Current Company Key
+8) Back Office (3.4 Company Key) activation verification
+9) API 7.2 Resend Bet integration and validation
+
+We will share logs, request/response samples, DB proof, and Back Office screenshots after completion.
+
+Thank you.

@@ -1,0 +1,61 @@
+﻿{
+    "generatedAt":  "2026-05-23T21:33:57.6656347+05:30",
+    "results":  [
+                    {
+                        "name":  "LC_Casino",
+                        "portfolio":  "Casino",
+                        "gpId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "//lobby-demo.ggppqqgg.com/welcome.aspx?token=37716813.lmzjKWAWISXtmGKYHjrHct\u0026sb=sports-demo.ggppqqgg.com\u0026locale=en\u0026device=d"
+                    },
+                    {
+                        "name":  "RNG_Games",
+                        "portfolio":  "Games",
+                        "gpId":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "//rng-demo.ggppqqgg.com/web-root/public/?token=37716814.ayLtYTTzmENQStaWfYRWRpYhn\u0026gameid=0"
+                    },
+                    {
+                        "name":  "SBO_Slots",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  14,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "https://gpos-demo.ggppqqgg.com/(S(wi3tt3begn2cr4vzfami5zyx))/CreativeGamingLobby?gp=14\u0026displayType=2\u0026gameType=All\u0026isOpenGamewithPopUp=False\u0026lang=EN"
+                    },
+                    {
+                        "name":  "568winGame",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  1029,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "https://ulobby-uat.biliandadagipie.com?token=6cae2b9a-bff8-45c1-ba42-d7bb93733dbe\u0026gpid=1029\u0026lang=EN"
+                    },
+                    {
+                        "name":  "AFB_Game",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  1016,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "https://ulobby-uat.biliandadagipie.com?token=98ba4ed2-99d1-4d79-83bf-27fae27434cb\u0026gpid=1016\u0026lang=EN"
+                    },
+                    {
+                        "name":  "FunkyGame",
+                        "portfolio":  "SeamlessGame",
+                        "gpId":  16,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "https://ulobby-uat.biliandadagipie.com?token=d7ac2530-f4c6-4575-96a1-3ec609cb4863\u0026gpid=16\u0026lang=EN"
+                    },
+                    {
+                        "name":  "AFB_Sportsbook",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "gpId":  1015,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "https://api.afb166.com/Public/Validate.aspx?sk=W0\u0026us=50601sbons1643528\u0026k=fb96e9a334194db88f324b7ebfc91dc7\u0026device=d\u0026oddsmode=\u0026lang=EN-US\u0026currencyName=USD\u0026IsHideChipSet=0\u0026print_txt=AFBSPORT\u0026ismmy=0"
+                    }
+                ]
+}

@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || (typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin);
+import { API_BASE } from "./apiBase";
 const ADMIN_TOKEN_KEY = "admin9x5-token";
 
 export interface AdminSummary {
@@ -465,6 +465,10 @@ export const adminApi = {
     request<{ ok: boolean; provider: string; message: string }>(`/api/admin/game-providers/${id}/test`, {
       method: "POST",
     }),
+  syncLiveGameProviders: () =>
+    request<{ ok: boolean; synced: number; total: number; serverId: string }>("/api/admin/game-providers/sync-live", {
+      method: "POST",
+    }),
 
   seoPages: () => request<SeoPage[]>("/api/admin/seo-pages"),
   createSeoPage: (payload: {
@@ -526,6 +530,10 @@ export const adminApi = {
     }),
   seedCasinoGames: () =>
     request<{ ok: boolean; count: number }>("/api/admin/casino-games/seed", {
+      method: "POST",
+    }),
+  syncLiveCasinoGames: () =>
+    request<{ ok: boolean; synced: number; sourceCount: number; serverId: string }>("/api/admin/casino-games/sync-live", {
       method: "POST",
     }),
 };

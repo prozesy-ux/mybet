@@ -1,10 +1,18 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getClient, query } from './db.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load project root .env first, then server/.env (if present) to support both run locations.
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
 const app = express();
@@ -14,7 +22,47 @@ const corsOrigins = (process.env.CORS_ORIGIN || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(cors(corsOrigins.length > 0 ? { origin: corsOrigins } : undefined));
+const isCorsOriginAllowed = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (corsOrigins.length === 0) {
+    return true;
+  }
+
+  return corsOrigins.some((allowedOrigin) => {
+    if (allowedOrigin === origin) {
+      return true;
+    }
+
+    if (!allowedOrigin.includes('*')) {
+      return false;
+    }
+
+    const escaped = allowedOrigin
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
+    return new RegExp(`^${escaped}$`, 'i').test(origin);
+  });
+};
+
+app.use(
+  cors(
+    corsOrigins.length > 0
+      ? {
+          origin(origin, callback) {
+            if (isCorsOriginAllowed(origin)) {
+              callback(null, true);
+              return;
+            }
+
+            callback(new Error('CORS origin not allowed'));
+          },
+        }
+      : undefined
+  )
+);
 app.use(express.json());
 
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || 'change-me-admin-secret';
@@ -24,8 +72,477 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@12345';
 
 const normalizeEmail = (value) => (value ? String(value).trim().toLowerCase() : null);
 const normalizePhone = (value) => (value ? String(value).trim() : null);
-const SEAMLESS_COMPANY_KEY = process.env.SEAMLESS_COMPANY_KEY || 'SWKEY-REAL-0513';
-const seamlessState = new Map();
+const FALLBACK_SEAMLESS_COMPANY_KEYS = ['SWKEY-REAL-0513', '799DCB01CFB9489CB2DF42D9B0743F59'];
+const seamlessCompanyKeys = Array.from(
+  new Set([
+    ...FALLBACK_SEAMLESS_COMPANY_KEYS,
+    ...String(process.env.SEAMLESS_COMPANY_KEY || '')
+      .split(',')
+      .map((value) => String(value || '').trim())
+      .filter(Boolean),
+  ])
+);
+const seamlessStateByTransfer = new Map();
+const seamlessTransferByTxn = new Map();
+const tkpayCallbackWhitelist = String(process.env.TKPAY_CALLBACK_IP_WHITELIST || '')
+  .split(',')
+  .map((value) => String(value || '').trim())
+  .filter(Boolean);
+
+const getRequestIp = (req) => {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const candidate = forwarded || req.ip || req.socket?.remoteAddress || '';
+  return String(candidate || '').replace('::ffff:', '').trim();
+};
+
+const isTkpayIpAllowed = (req) => {
+  if (tkpayCallbackWhitelist.length === 0) {
+    return true;
+  }
+
+  const requestIp = getRequestIp(req);
+  return tkpayCallbackWhitelist.includes(requestIp);
+};
+
+const findTkpayReference = (payload) => {
+  const value = getBodyValue(
+    payload,
+    'reference_id',
+    'referenceId',
+    'merchant_order_no',
+    'merchantOrderNo',
+    'order_no',
+    'orderNo',
+    'out_trade_no',
+    'trade_no',
+    'transaction_id',
+    'transactionId',
+    'ref',
+    'RefNo'
+  );
+  return value ? String(value).trim() : '';
+};
+
+const getTkpayStatusText = (payload) =>
+  String(
+    getBodyValue(payload, 'status', 'trade_status', 'order_status', 'state', 'result', 'message') || ''
+  )
+    .trim()
+    .toLowerCase();
+
+const getTkpayStatusCode = (payload) =>
+  String(getBodyValue(payload, 'code', 'status_code', 'result_code', 'errno', 'error_code') || '')
+    .trim()
+    .toLowerCase();
+
+const isTkpayCallbackSuccess = (payload) => {
+  const status = getTkpayStatusText(payload);
+  const code = getTkpayStatusCode(payload);
+  const successText = ['success', 'succeed', 'succeeded', 'paid', 'completed', 'done', 'ok'];
+  const successCode = ['0', '00', '200', '201', 'ok', 'success'];
+  return successText.includes(status) || successCode.includes(code);
+};
+
+const parseTkpayChannels = () => {
+  return String(process.env.TKPAY_SUPPORTED_CHANNELS || '')
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .reduce((acc, pair) => {
+      const [code, value] = pair.split(':').map((v) => String(v || '').trim().toLowerCase());
+      const channelId = Number(value);
+      if (code && Number.isFinite(channelId) && channelId > 0) {
+        acc[code] = channelId;
+      }
+      return acc;
+    }, {});
+};
+
+const compactTkpayPayload = (payload) =>
+  Object.fromEntries(
+    Object.entries(payload || {}).filter(([, value]) => {
+      if (value === null || value === undefined) {
+        return false;
+      }
+      if (typeof value === 'string' && value.trim() === '') {
+        return false;
+      }
+      return true;
+    })
+  );
+
+const tkpayNormalizeValue = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    if (Number.isInteger(value)) {
+      return String(value);
+    }
+    return String(Number(value));
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  return String(value);
+};
+
+const buildTkpayEncryptValue = (payload, hashKey) => {
+  const keys = Object.keys(payload || {})
+    .filter((key) => key !== 'EncryptValue')
+    .filter((key) => payload[key] !== null && payload[key] !== undefined)
+    .sort((a, b) => a.localeCompare(b));
+
+  const body = keys
+    .map((key) => `${key}=${tkpayNormalizeValue(payload[key])}`)
+    .join('&');
+
+  const source = `${body}${body ? '&' : ''}HashKey=${hashKey}`.toLowerCase();
+  return crypto.createHash('sha256').update(source, 'utf8').digest('hex').toUpperCase();
+};
+
+const tkpayConfig = () => {
+  const baseUrl = String(process.env.TKPAY_API_BASE_URL || '').replace(/\/+$/, '');
+  const merchantId = String(process.env.TKPAY_MERCHANT_ID || '').trim();
+  const hashKey = String(process.env.TKPAY_MERCHANT_KEY || '').trim();
+  const collectionCallback = String(process.env.TKPAY_COLLECTION_CALLBACK_URL || '').trim();
+  const payoutCallback = String(process.env.TKPAY_PAYOUT_CALLBACK_URL || '').trim();
+  const returnUrl = String(process.env.TKPAY_RETURN_URL || process.env.VITE_PUBLIC_SITE_URL || 'https://gpzes.com/').trim();
+  const currencyId = Number(process.env.TKPAY_CURRENCY_ID || 11);
+
+  return {
+    ok: Boolean(baseUrl && merchantId && hashKey),
+    baseUrl,
+    merchantId,
+    hashKey,
+    collectionCallback,
+    payoutCallback,
+    returnUrl,
+    currencyId: Number.isFinite(currencyId) ? currencyId : 11,
+    channels: parseTkpayChannels(),
+  };
+};
+
+const buildReturnUrlWithRef = (baseUrl, referenceId) => {
+  const base = String(baseUrl || '').trim();
+  const ref = String(referenceId || '').trim();
+  if (!base || !ref) {
+    return base;
+  }
+
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}deposit_ref=${encodeURIComponent(ref)}`;
+};
+
+const callTkpayApi = async (endpointPath, payload) => {
+  const conf = tkpayConfig();
+  if (!conf.ok) {
+    throw new Error('TKPAY configuration is incomplete');
+  }
+
+  const withSign = compactTkpayPayload({
+    ...payload,
+    ShopUserLongId: payload.ShopUserLongId || conf.merchantId,
+  });
+  withSign.EncryptValue = buildTkpayEncryptValue(withSign, conf.hashKey);
+
+  const response = await fetch(`${conf.baseUrl}${endpointPath}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(withSign),
+  });
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    payload: withSign,
+    data,
+  };
+};
+
+const externalGameApiConfig = () => {
+  const baseUrl = String(process.env.SW_API_BASE_URL || '').replace(/\/+$/, '');
+  const companyKey = String(process.env.SW_API_COMPANY_KEY || '').trim();
+  const serverId = String(process.env.SW_API_SERVER_ID || 'GPZES01').trim();
+  const agent = String(process.env.SW_API_AGENT_USERNAME || '').trim();
+  const lang = String(process.env.SW_API_LANG || 'en').trim() || 'en';
+
+  return {
+    ok: Boolean(baseUrl && companyKey && serverId),
+    baseUrl,
+    companyKey,
+    serverId,
+    agent,
+    lang,
+  };
+};
+
+const callExternalGameApi = async (endpointPath, payload = {}) => {
+  const conf = externalGameApiConfig();
+  if (!conf.ok) {
+    throw new Error('External game API configuration is incomplete');
+  }
+
+  const response = await fetch(`${conf.baseUrl}${endpointPath}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ...payload,
+      CompanyKey: conf.companyKey,
+      ServerId: conf.serverId,
+    }),
+  });
+
+  const text = await response.text();
+  let data = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data,
+    conf,
+  };
+};
+
+const toCasinoCategory = (newGameType) => {
+  const type = Number(newGameType);
+  if (!Number.isFinite(type)) {
+    return 'other';
+  }
+  if (type >= 100 && type < 200) {
+    return 'live';
+  }
+  if (type >= 200 && type < 300) {
+    return 'slots';
+  }
+  if (type >= 300 && type < 400) {
+    return 'table';
+  }
+  if (type === 9 || type === 10 || type === 11) {
+    return 'live';
+  }
+  return 'other';
+};
+
+const toPublicIconUrl = (rawUrl) => {
+  const url = String(rawUrl || '').trim();
+  if (!url) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url;
+  }
+  if (url.startsWith('/')) {
+    return `https://img-3-2.cdn568.net${url}`;
+  }
+  return `https://img-3-2.cdn568.net/${url}`;
+};
+
+const syncLiveCasinoGames = async ({ removeLegacyRows = true } = {}) => {
+  const conf = externalGameApiConfig();
+  if (!conf.ok) {
+    throw new Error('SW_API_BASE_URL, SW_API_COMPANY_KEY, and SW_API_SERVER_ID are required');
+  }
+
+  const remote = await callExternalGameApi('/web-root/restricted/information/get-game-list.aspx', {
+    GpId: 0,
+    IsGetAll: true,
+  });
+
+  const apiErrorId = Number(remote.data?.error?.id ?? -1);
+  if (apiErrorId !== 0) {
+    throw new Error(String(remote.data?.error?.msg || 'Game list API failed'));
+  }
+
+  const rows = Array.isArray(remote.data?.seamlessGameProviderGames)
+    ? remote.data.seamlessGameProviderGames
+    : [];
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL statement_timeout = 0');
+
+    if (removeLegacyRows) {
+      await client.query(
+        `DELETE FROM casino_games
+         WHERE gp_id IS NULL
+            OR upstream_game_id IS NULL`
+      );
+    }
+
+    const normalizedRows = [];
+    for (let i = 0; i < rows.length; i++) {
+      const item = rows[i] || {};
+      const gpId = Number(item.gameProviderId);
+      const upstreamGameId = Number(item.gameID);
+
+      if (!Number.isFinite(gpId) || gpId <= 0 || !Number.isFinite(upstreamGameId) || upstreamGameId <= 0) {
+        continue;
+      }
+
+      const infos = Array.isArray(item.gameInfos) ? item.gameInfos : [];
+      const enInfo = infos.find((g) => String(g.language || '').toLowerCase() === 'en') || infos[0] || {};
+      const title = String(enInfo.gameName || item.provider || `Game ${upstreamGameId}`).trim();
+      const provider = String(item.provider || 'Unknown').trim() || 'Unknown';
+      const imageUrl = toPublicIconUrl(enInfo.gameIconUrl);
+
+      if (!title || !imageUrl) {
+        continue;
+      }
+
+      const isActive = Boolean(item.isEnabled ?? true) && Boolean(item.isProviderOnline ?? true) && !Boolean(item.isMaintain ?? false);
+
+      normalizedRows.push([
+        gpId,
+        upstreamGameId,
+        title,
+        provider,
+        toCasinoCategory(item.newGameType),
+        imageUrl,
+        '#',
+        Number.isFinite(Number(item.rank)) ? Number(item.rank) : i,
+        isActive,
+      ]);
+    }
+
+    const batchSize = 300;
+    let upserted = 0;
+
+    for (let offset = 0; offset < normalizedRows.length; offset += batchSize) {
+      const chunk = normalizedRows.slice(offset, offset + batchSize);
+      const placeholders = [];
+      const params = [];
+
+      for (let index = 0; index < chunk.length; index++) {
+        const base = index * 9;
+        const row = chunk[index];
+        placeholders.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`);
+        params.push(...row);
+      }
+
+      const bulkUpsertSql = `
+        INSERT INTO casino_games (
+          gp_id,
+          upstream_game_id,
+          title,
+          provider,
+          category,
+          image_url,
+          game_url,
+          sort_order,
+          is_active
+        ) VALUES ${placeholders.join(',')}
+        ON CONFLICT (gp_id, upstream_game_id)
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          provider = EXCLUDED.provider,
+          category = EXCLUDED.category,
+          image_url = EXCLUDED.image_url,
+          game_url = EXCLUDED.game_url,
+          sort_order = EXCLUDED.sort_order,
+          is_active = EXCLUDED.is_active,
+          updated_at = CURRENT_TIMESTAMP
+      `;
+
+      await client.query(bulkUpsertSql, params);
+      upserted += chunk.length;
+    }
+
+    await client.query('COMMIT');
+
+    const count = await query('SELECT COUNT(*)::int AS c FROM casino_games WHERE is_active = true');
+    return {
+      ok: true,
+      upserted,
+      sourceCount: rows.length,
+      activeCount: Number(count.rows[0]?.c || 0),
+      serverId: remote.data?.serverId || conf.serverId,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+const normalizeExternalUsername = (userId, username) => {
+  const safe = String(username || '')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 22);
+  return `gpz_${userId}_${safe || 'player'}`.slice(0, 40);
+};
+
+const ensureExternalPlayer = async (authUser) => {
+  const conf = externalGameApiConfig();
+  if (!conf.agent) {
+    throw new Error('SW_API_AGENT_USERNAME is required to auto-register players');
+  }
+
+  const existing = String(authUser.seamless_username || '').trim();
+  const seamlessUsername = existing || normalizeExternalUsername(authUser.id, authUser.username);
+
+  if (!existing) {
+    await query(
+      `UPDATE users
+       SET seamless_username = $1
+       WHERE id = $2`,
+      [seamlessUsername, authUser.id]
+    );
+  }
+
+  const register = await callExternalGameApi('/web-root/restricted/player/register-player.aspx', {
+    Username: seamlessUsername,
+    Agent: conf.agent,
+    UserGroup: 'a',
+  });
+
+  const regErrorId = Number(register.data?.error?.id ?? -1);
+  const regErrorMsg = String(register.data?.error?.msg || '');
+  const canIgnore = regErrorId === 0 || /exist|duplicate|already/i.test(regErrorMsg);
+
+  if (!canIgnore) {
+    throw new Error(`Player registration failed: ${regErrorMsg || 'Unknown error'}`);
+  }
+
+  return seamlessUsername;
+};
+
+const isTkpayCallbackFailed = (payload) => {
+  const status = getTkpayStatusText(payload);
+  const code = getTkpayStatusCode(payload);
+  const failedText = ['failed', 'fail', 'error', 'cancel', 'cancelled', 'rejected', 'expired'];
+  const failedCode = ['400', '401', '402', '403', '404', '422', '500', 'failed', 'error'];
+  return failedText.includes(status) || failedCode.includes(code);
+};
 
 const getBodyValue = (payload, ...candidates) => {
   if (!payload || typeof payload !== 'object') {
@@ -54,24 +571,51 @@ const seamlessResponse = (overrides = {}) => ({
 });
 
 const isCompanyKeyValid = (providedKey) => {
-  if (!SEAMLESS_COMPANY_KEY) {
+  if (seamlessCompanyKeys.length === 0) {
     return true;
   }
-  return String(providedKey || '') === String(SEAMLESS_COMPANY_KEY);
+  return seamlessCompanyKeys.includes(String(providedKey || ''));
+};
+
+const normalizeSeamlessUsername = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return { raw: '', canonical: '', candidates: [] };
+  }
+
+  const candidates = [raw];
+  if (raw.includes('_')) {
+    const parts = raw.split('_').filter(Boolean);
+    if (parts.length > 1) {
+      candidates.push(parts.slice(1).join('_'));
+      candidates.push(parts[parts.length - 1]);
+    }
+  }
+
+  const uniqueCandidates = Array.from(new Set(candidates.map((item) => String(item).trim()).filter(Boolean)));
+  return {
+    raw,
+    // Prefer the most specific suffix if provider sends prefixed username formats.
+    canonical: uniqueCandidates[uniqueCandidates.length - 1] || raw,
+    candidates: uniqueCandidates,
+  };
 };
 
 const findUserBySeamlessName = async (payload) => {
-  const username = getBodyValue(payload, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
-  if (!username) {
+  const usernameRaw = getBodyValue(payload, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+  const normalized = normalizeSeamlessUsername(usernameRaw);
+  if (!normalized.raw) {
     return null;
   }
 
+  const usernameCandidates = normalized.candidates.map((value) => String(value).toLowerCase());
   const result = await query(
     `SELECT id, username, balance, status
      FROM users
-     WHERE LOWER(username) = LOWER($1)
+     WHERE LOWER(username) = ANY($1::text[])
+     ORDER BY CASE WHEN LOWER(username) = $2 THEN 0 ELSE 1 END
      LIMIT 1`,
-    [String(username)]
+    [usernameCandidates, String(normalized.raw).toLowerCase()]
   );
 
   return result.rows[0] || null;
@@ -91,6 +635,114 @@ const findReferenceNo = (payload) => {
     'RoundId'
   );
   return value ? String(value) : '';
+};
+
+const findTransferCode = (payload) => {
+  const value = getBodyValue(payload, 'TransferCode', 'Transfercode', 'TransferID', 'TransferId', 'RefNo', 'ReferenceNo');
+  return value ? String(value) : '';
+};
+
+const findTransactionId = (payload) => {
+  const value = getBodyValue(payload, 'TransactionId', 'TransactionID', 'OrderNo', 'BetId', 'WagerId', 'RoundId');
+  return value ? String(value) : '';
+};
+
+const findNumeric = (payload, ...keys) => {
+  const raw = getBodyValue(payload, ...keys);
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+};
+
+const getScopeParts = (payload) => ({
+  username: normalizeSeamlessUsername(getBodyValue(payload, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName')).canonical.toLowerCase(),
+  productType: String(getBodyValue(payload, 'ProductType') || ''),
+  gameType: String(getBodyValue(payload, 'GameType') || ''),
+  gpid: String(getBodyValue(payload, 'Gpid') || ''),
+});
+
+const buildTransferKey = (payload, transferCode) => {
+  const scope = getScopeParts(payload);
+  return [scope.username, scope.productType, scope.gameType, scope.gpid, String(transferCode || '')].join('|');
+};
+
+const buildTxnKey = (payload, transferCode, transactionId) => {
+  const scope = getScopeParts(payload);
+  return [scope.username, scope.productType, scope.gameType, scope.gpid, String(transferCode || ''), String(transactionId || '')].join('|');
+};
+
+const getDuplicateDeductErrorCode = (payload, existingBet = null) => {
+  const productType = Number(getBodyValue(payload, 'ProductType') || 0);
+  const isRunning = existingBet ? String(existingBet.status || '') === 'running' : true;
+  if ((productType === 3 || productType === 7) && isRunning) {
+    return 7;
+  }
+  return 5003;
+};
+
+const supportsUpgradeableDuplicateDeduct = (payload) => {
+  const productType = Number(getBodyValue(payload, 'ProductType') || 0);
+  return productType === 3 || productType === 7;
+};
+
+const getBetByPayload = (payload) => {
+  const transferCode = findTransferCode(payload);
+  const transactionId = findTransactionId(payload);
+
+  if (transferCode) {
+    const transferKey = buildTransferKey(payload, transferCode);
+    const bet = seamlessStateByTransfer.get(transferKey);
+    if (bet) {
+      return { transferCode, transactionId, transferKey, bet };
+    }
+  }
+
+  if (transferCode && transactionId) {
+    const txnKey = buildTxnKey(payload, transferCode, transactionId);
+    const linkedTransferKey = seamlessTransferByTxn.get(txnKey);
+    if (linkedTransferKey) {
+      const bet = seamlessStateByTransfer.get(linkedTransferKey);
+      if (bet) {
+        return { transferCode: bet.transfer_code, transactionId, transferKey: linkedTransferKey, bet };
+      }
+    }
+  }
+
+  return { transferCode, transactionId, transferKey: null, bet: null };
+};
+
+const createSeamlessBet = ({ user, payload, transferCode, transactionId, amount, balanceAfter }) => {
+  const scope = getScopeParts(payload);
+  return {
+    username: user.username,
+    user_id: user.id,
+    scope,
+    transfer_code: transferCode,
+    primary_transaction_id: transactionId,
+    status: 'running',
+    stake_total: Number(amount || 0),
+    current_stake: Number(amount || 0),
+    settled_win_loss: 0,
+    settled_count: 0,
+    cancel_count: 0,
+    rollback_count: 0,
+    last_action: 'deduct',
+    balance_after: Number(balanceAfter || 0),
+    txs: {
+      [String(transactionId)]: {
+        amount: Number(amount || 0),
+        status: 'running',
+      },
+    },
+    return_stake_history: {},
+  };
+};
+
+const saveSeamlessBet = (transferKey, bet, payload, transferCode, transactionId) => {
+  seamlessStateByTransfer.set(transferKey, bet);
+  if (transferCode && transactionId) {
+    const txnKey = buildTxnKey(payload, transferCode, transactionId);
+    seamlessTransferByTxn.set(txnKey, transferKey);
+  }
 };
 
 const findAmount = (payload) => {
@@ -145,7 +797,7 @@ const requireUserAuth = async (req, res, next) => {
     const token = authHeader.slice(7);
     const decoded = jwt.verify(token, USER_JWT_SECRET);
     const userResult = await query(
-      `SELECT id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at
+      `SELECT id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at, seamless_username
        FROM users WHERE id = $1`,
       [decoded.userId]
     );
@@ -194,6 +846,9 @@ const MOCK_CASINO_GAMES = [
   { title: 'Big Bass Bonanza',         provider: 'Pragmatic Play', category: 'slots', image_url: 'https://1win.com/resources/v1/optimizeimages/unsafe/casino_game_card_x1/plain/https://v1.bundlecdn.com/casino-images/pragmatic/big-bass-bonanza_vertical.jpg@webp', game_url: '#' },
 ];
 
+const BKASH_LOGO_URL = 'https://files.v1.distcdn.net/v1/objects/513306c6-1563-46db-aab5-5e4e5bb4563a';
+const NAGAD_LOGO_URL = 'https://files.v1.distcdn.net/v1/objects/6ebd6ca3-2592-405a-8f89-198bb44ea372';
+
 const runCasinoSeed = async () => {
   for (let i = 0; i < MOCK_CASINO_GAMES.length; i++) {
     const g = MOCK_CASINO_GAMES[i];
@@ -217,6 +872,7 @@ const initializeAdminSchema = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS game_providers (
       id SERIAL PRIMARY KEY,
+      external_provider_id INTEGER,
       name VARCHAR(120) UNIQUE NOT NULL,
       api_endpoint TEXT NOT NULL,
       api_key TEXT,
@@ -333,6 +989,8 @@ const initializeAdminSchema = async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS casino_games (
       id SERIAL PRIMARY KEY,
+      gp_id INTEGER,
+      upstream_game_id INTEGER,
       title VARCHAR(200) NOT NULL,
       provider VARCHAR(100) DEFAULT 'Unknown',
       category VARCHAR(80) DEFAULT 'slots',
@@ -345,25 +1003,501 @@ const initializeAdminSchema = async () => {
     )
   `);
 
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS seamless_username VARCHAR(40)`);
+  await query(`ALTER TABLE game_providers ADD COLUMN IF NOT EXISTS external_provider_id INTEGER`);
+  await query(`ALTER TABLE casino_games ADD COLUMN IF NOT EXISTS gp_id INTEGER`);
+  await query(`ALTER TABLE casino_games ADD COLUMN IF NOT EXISTS upstream_game_id INTEGER`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_game_providers_external_id ON game_providers(external_provider_id) WHERE external_provider_id IS NOT NULL`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_games_external_key ON casino_games(gp_id, upstream_game_id) WHERE gp_id IS NOT NULL AND upstream_game_id IS NOT NULL`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_games_external_key_full ON casino_games(gp_id, upstream_game_id)`);
+
   const gameCount = await query('SELECT COUNT(*)::int AS c FROM casino_games');
   if (Number(gameCount.rows[0]?.c) === 0) {
     await runCasinoSeed();
   }
 
+  const autoSyncEnabled = String(process.env.SW_AUTO_SYNC_ON_BOOT || 'true').toLowerCase() !== 'false';
+  if (autoSyncEnabled) {
+    const syncStats = await query(
+      `SELECT
+         COUNT(*)::int AS total_count,
+         COUNT(*) FILTER (WHERE gp_id IS NOT NULL AND upstream_game_id IS NOT NULL)::int AS live_count
+       FROM casino_games`
+    );
+
+    const totalCount = Number(syncStats.rows[0]?.total_count || 0);
+    const liveCount = Number(syncStats.rows[0]?.live_count || 0);
+    const likelyLegacyDataset = totalCount > 0 && liveCount < Math.min(totalCount, 100);
+
+    if (likelyLegacyDataset) {
+      syncLiveCasinoGames({ removeLegacyRows: true })
+        .then((syncResult) => {
+          console.log(
+            `[casino-sync] Auto sync completed on boot: source=${syncResult.sourceCount}, upserted=${syncResult.upserted}, active=${syncResult.activeCount}`
+          );
+        })
+        .catch((syncError) => {
+          console.error(`[casino-sync] Auto sync failed on boot: ${syncError.message}`);
+        });
+    }
+  }
+
   const paymentCount = await query('SELECT COUNT(*)::int AS c FROM payment_methods');
   if (Number(paymentCount.rows[0]?.c) === 0) {
     await query(
-      `INSERT INTO payment_methods (name, code, method_type, provider, status, min_amount, max_amount, fee_percent)
+      `INSERT INTO payment_methods (name, code, method_type, provider, image_url, status, min_amount, max_amount, fee_percent)
        VALUES
-         ('BKash', 'bkash', 'both', 'BKash', 'active', 200, 20000, 0),
-         ('Nagad', 'nagad', 'both', 'Nagad', 'active', 200, 20000, 0),
-         ('Upay', 'upay', 'both', 'Upay', 'active', 200, 20000, 0)`
+         ('BKash', 'bkash', 'both', 'TKPAY', $1, 'active', 100, 50000, 0),
+         ('Nagad', 'nagad', 'both', 'TKPAY', $2, 'active', 100, 50000, 0)`
+      ,
+      [BKASH_LOGO_URL, NAGAD_LOGO_URL]
     );
   }
+
+  // Keep legacy databases in sync with the current gateway rollout.
+  await query(
+    `INSERT INTO payment_methods (name, code, method_type, provider, image_url, status, min_amount, max_amount, fee_percent)
+     VALUES
+       ('BKash', 'bkash', 'both', 'TKPAY', $1, 'active', 100, 50000, 0),
+       ('Nagad', 'nagad', 'both', 'TKPAY', $2, 'active', 100, 50000, 0)
+     ON CONFLICT (code)
+     DO UPDATE SET
+       name = EXCLUDED.name,
+       method_type = EXCLUDED.method_type,
+       provider = EXCLUDED.provider,
+       image_url = COALESCE(payment_methods.image_url, EXCLUDED.image_url),
+       status = 'active',
+       min_amount = 100,
+       max_amount = 50000,
+       fee_percent = 0,
+       updated_at = CURRENT_TIMESTAMP`,
+    [BKASH_LOGO_URL, NAGAD_LOGO_URL]
+  );
+
+  await query(
+    `UPDATE payment_methods
+     SET status = 'inactive', updated_at = CURRENT_TIMESTAMP
+     WHERE code = 'upay'`
+  );
 };
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
+});
+
+app.post('/api/payments/tkpay/callback/collection', async (req, res) => {
+  if (!isTkpayIpAllowed(req)) {
+    return res.status(403).json({ ok: false, error: 'IP not allowed' });
+  }
+
+  const referenceId = findTkpayReference(req.body || {});
+  if (!referenceId) {
+    return res.status(400).json({ ok: false, error: 'Missing reference id in callback payload' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const txResult = await client.query(
+      `SELECT id, user_id, amount, status, type
+       FROM transactions
+       WHERE reference_id = $1
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [referenceId]
+    );
+
+    if (!txResult.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: 'Transaction not found' });
+    }
+
+    const tx = txResult.rows[0];
+    if (tx.type !== 'deposit') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, error: 'Callback reference is not a deposit transaction' });
+    }
+
+    const callbackMetadata = JSON.stringify({
+      tkpay_callback_type: 'collection',
+      payload: req.body || {},
+      callback_ip: getRequestIp(req),
+      received_at: new Date().toISOString(),
+    });
+
+    if (isTkpayCallbackSuccess(req.body || {})) {
+      if (tx.status !== 'completed') {
+        await client.query(
+          `UPDATE transactions
+           SET status = 'completed',
+               metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+           WHERE id = $2`,
+          [callbackMetadata, tx.id]
+        );
+
+        await client.query(
+          `UPDATE users
+           SET balance = balance + $1,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [tx.amount, tx.user_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.json({ ok: true, status: tx.status === 'completed' ? 'already_completed' : 'completed' });
+    }
+
+    if (isTkpayCallbackFailed(req.body || {})) {
+      if (tx.status === 'pending') {
+        await client.query(
+          `UPDATE transactions
+           SET status = 'cancelled',
+               metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+           WHERE id = $2`,
+          [callbackMetadata, tx.id]
+        );
+      }
+      await client.query('COMMIT');
+      return res.json({ ok: true, status: tx.status === 'pending' ? 'cancelled' : tx.status });
+    }
+
+    await client.query(
+      `UPDATE transactions
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+       WHERE id = $2`,
+      [callbackMetadata, tx.id]
+    );
+
+    await client.query('COMMIT');
+    return res.json({ ok: true, status: 'received' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ ok: false, error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/payments/tkpay/callback/payout', async (req, res) => {
+  if (!isTkpayIpAllowed(req)) {
+    return res.status(403).json({ ok: false, error: 'IP not allowed' });
+  }
+
+  const referenceId = findTkpayReference(req.body || {});
+  if (!referenceId) {
+    return res.status(400).json({ ok: false, error: 'Missing reference id in callback payload' });
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const txResult = await client.query(
+      `SELECT id, user_id, amount, status, type
+       FROM transactions
+       WHERE reference_id = $1
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [referenceId]
+    );
+
+    if (!txResult.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, error: 'Transaction not found' });
+    }
+
+    const tx = txResult.rows[0];
+    if (tx.type !== 'withdrawal') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ ok: false, error: 'Callback reference is not a withdrawal transaction' });
+    }
+
+    const callbackMetadata = JSON.stringify({
+      tkpay_callback_type: 'payout',
+      payload: req.body || {},
+      callback_ip: getRequestIp(req),
+      received_at: new Date().toISOString(),
+    });
+
+    if (isTkpayCallbackSuccess(req.body || {})) {
+      if (tx.status === 'pending') {
+        await client.query(
+          `UPDATE transactions
+           SET status = 'completed',
+               metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+           WHERE id = $2`,
+          [callbackMetadata, tx.id]
+        );
+
+        await client.query(
+          `UPDATE users
+           SET balance = balance - $1,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [tx.amount, tx.user_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.json({ ok: true, status: tx.status === 'pending' ? 'completed' : tx.status });
+    }
+
+    if (isTkpayCallbackFailed(req.body || {})) {
+      if (tx.status === 'pending') {
+        await client.query(
+          `UPDATE transactions
+           SET status = 'cancelled',
+               metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+           WHERE id = $2`,
+          [callbackMetadata, tx.id]
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.json({ ok: true, status: tx.status === 'pending' ? 'cancelled' : tx.status });
+    }
+
+    await client.query(
+      `UPDATE transactions
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+       WHERE id = $2`,
+      [callbackMetadata, tx.id]
+    );
+
+    await client.query('COMMIT');
+    return res.json({ ok: true, status: 'received' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ ok: false, error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/payments/tkpay/status', (req, res) => {
+  const merchantId = String(process.env.TKPAY_MERCHANT_ID || '').trim();
+  const merchantKey = String(process.env.TKPAY_MERCHANT_KEY || '').trim();
+  const apiBaseUrl = String(process.env.TKPAY_API_BASE_URL || '').trim();
+
+  return res.json({
+    ok: true,
+    gateway: 'TKPAY',
+    configured: Boolean(merchantId && merchantKey && apiBaseUrl),
+    merchantIdPresent: Boolean(merchantId),
+    merchantId,
+    merchantKeyPresent: Boolean(merchantKey),
+    apiBaseUrl,
+    callbackIpWhitelistCount: tkpayCallbackWhitelist.length,
+    callbackIpWhitelist: tkpayCallbackWhitelist,
+    endpoints: {
+      collection: '/api/payments/tkpay/callback/collection',
+      payout: '/api/payments/tkpay/callback/payout',
+    },
+  });
+});
+
+app.post('/api/payments/tkpay/balance', requireAdminAuth, async (req, res) => {
+  try {
+    const conf = tkpayConfig();
+    if (!conf.ok) {
+      return res.status(400).json({ ok: false, error: 'TKPAY env is incomplete' });
+    }
+
+    const currencyId = Number(req.body?.currencyId || conf.currencyId || 11);
+    const result = await callTkpayApi('/api/shopGetBalance', {
+      CurrencyId: Number.isFinite(currencyId) ? currencyId : 11,
+      ShopUserLongId: conf.merchantId,
+    });
+
+    return res.status(result.ok ? 200 : 502).json({
+      ok: result.ok,
+      httpStatus: result.status,
+      request: {
+        CurrencyId: currencyId,
+        ShopUserLongId: conf.merchantId,
+      },
+      response: result.data,
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/payments/tkpay/deposits/:id/create-order', requireAdminAuth, async (req, res) => {
+  const txId = Number(req.params.id);
+  if (!txId) {
+    return res.status(400).json({ ok: false, error: 'Invalid transaction id' });
+  }
+
+  try {
+    const conf = tkpayConfig();
+    if (!conf.ok) {
+      return res.status(400).json({ ok: false, error: 'TKPAY env is incomplete' });
+    }
+
+    const txResult = await query(
+      `SELECT t.id, t.user_id, t.amount, t.status, t.type, t.reference_id, t.payment_method, u.full_name, u.username
+       FROM transactions t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.id = $1
+       LIMIT 1`,
+      [txId]
+    );
+    if (!txResult.rows.length) {
+      return res.status(404).json({ ok: false, error: 'Transaction not found' });
+    }
+
+    const tx = txResult.rows[0];
+    if (tx.type !== 'deposit') {
+      return res.status(400).json({ ok: false, error: 'Transaction must be deposit' });
+    }
+
+    const methodCode = String(tx.payment_method || '').toLowerCase();
+    const paymentChannelId = conf.channels[methodCode];
+    if (!paymentChannelId) {
+      return res.status(400).json({ ok: false, error: `Unsupported TKPAY channel for method ${methodCode || 'unknown'}` });
+    }
+
+    const shopOrderId = String(tx.reference_id || `DEP-${tx.id}`);
+    const payload = compactTkpayPayload({
+      Amount: Number(tx.amount),
+      CurrencyId: conf.currencyId,
+      IsTest: Boolean(req.body?.isTest ?? false),
+      PayerKey: String(tx.user_id),
+      PayerName: String(tx.full_name || tx.username || `user-${tx.user_id}`),
+      PaymentChannelId: paymentChannelId,
+      ShopInformUrl: conf.collectionCallback,
+      ShopOrderId: shopOrderId,
+      ShopReturnUrl: req.body?.shopReturnUrl ? String(req.body.shopReturnUrl) : conf.returnUrl,
+      ShopRemark: req.body?.shopRemark ? String(req.body.shopRemark) : undefined,
+      ShopUserLongId: conf.merchantId,
+    });
+
+    const result = await callTkpayApi('/api/createOrder', payload);
+    const metadata = {
+      tkpay_create_order: {
+        at: new Date().toISOString(),
+        is_test: payload.IsTest,
+        request: {
+          ...payload,
+          EncryptValue: undefined,
+        },
+        http_status: result.status,
+        response: result.data,
+      },
+    };
+
+    await query(
+      `UPDATE transactions
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [JSON.stringify(metadata), tx.id]
+    );
+
+    return res.status(result.ok ? 200 : 502).json({
+      ok: result.ok,
+      httpStatus: result.status,
+      transactionId: tx.id,
+      referenceId: shopOrderId,
+      response: result.data,
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/payments/tkpay/withdrawals/:id/create-order', requireAdminAuth, async (req, res) => {
+  const txId = Number(req.params.id);
+  if (!txId) {
+    return res.status(400).json({ ok: false, error: 'Invalid transaction id' });
+  }
+
+  try {
+    const conf = tkpayConfig();
+    if (!conf.ok) {
+      return res.status(400).json({ ok: false, error: 'TKPAY env is incomplete' });
+    }
+
+    const txResult = await query(
+      `SELECT t.id, t.user_id, t.amount, t.status, t.type, t.reference_id, t.payment_method, t.metadata, u.full_name, u.username
+       FROM transactions t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.id = $1
+       LIMIT 1`,
+      [txId]
+    );
+    if (!txResult.rows.length) {
+      return res.status(404).json({ ok: false, error: 'Transaction not found' });
+    }
+
+    const tx = txResult.rows[0];
+    if (tx.type !== 'withdrawal') {
+      return res.status(400).json({ ok: false, error: 'Transaction must be withdrawal' });
+    }
+
+    const methodCode = String(tx.payment_method || '').toLowerCase();
+    const paymentChannelId = conf.channels[methodCode];
+    if (!paymentChannelId) {
+      return res.status(400).json({ ok: false, error: `Unsupported TKPAY channel for method ${methodCode || 'unknown'}` });
+    }
+
+    const accountNumber = String(tx.metadata?.account_number || req.body?.payeeAccountNumber || '').trim();
+    if (!accountNumber) {
+      return res.status(400).json({ ok: false, error: 'Missing payee account number (withdrawal metadata.account_number)' });
+    }
+
+    const shopOrderId = String(tx.reference_id || `WDR-${tx.id}`);
+    const payload = compactTkpayPayload({
+      Amount: Number(tx.amount),
+      CurrencyId: conf.currencyId,
+      IsTest: Boolean(req.body?.isTest ?? false),
+      PayeeAccountName: String(req.body?.payeeAccountName || tx.full_name || tx.username || `user-${tx.user_id}`),
+      PayeeAccountNumber: accountNumber,
+      PayeePhoneNumber: req.body?.payeePhoneNumber ? String(req.body.payeePhoneNumber) : undefined,
+      PaymentChannelId: paymentChannelId,
+      ShopInformUrl: conf.payoutCallback,
+      ShopOrderId: shopOrderId,
+      ShopRemark: req.body?.shopRemark ? String(req.body.shopRemark) : undefined,
+      ShopUserLongId: conf.merchantId,
+    });
+
+    const result = await callTkpayApi('/api/createPaymentOrder', payload);
+    const metadata = {
+      tkpay_create_payout: {
+        at: new Date().toISOString(),
+        is_test: payload.IsTest,
+        request: {
+          ...payload,
+          EncryptValue: undefined,
+        },
+        http_status: result.status,
+        response: result.data,
+      },
+    };
+
+    await query(
+      `UPDATE transactions
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [JSON.stringify(metadata), tx.id]
+    );
+
+    return res.status(result.ok ? 200 : 502).json({
+      ok: result.ok,
+      httpStatus: result.status,
+      transactionId: tx.id,
+      referenceId: shopOrderId,
+      response: result.data,
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
 });
 
 // ── Public casino games ───────────────────────────────────────────────────────
@@ -375,6 +1509,230 @@ app.get('/api/casino-games', async (req, res) => {
     return res.json(result.rows);
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/casino/launch/:id', requireUserAuth, async (req, res) => {
+  try {
+    const gameId = Number(req.params.id);
+    if (!Number.isFinite(gameId) || gameId <= 0) {
+      return res.status(400).json({ error: 'Invalid game id' });
+    }
+
+    const conf = externalGameApiConfig();
+    if (!conf.ok) {
+      return res.status(500).json({ error: 'Production game API is not configured' });
+    }
+
+    const gameResult = await query(
+      `SELECT id, title, provider, gp_id, upstream_game_id
+       FROM casino_games
+       WHERE id = $1 AND is_active = true`,
+      [gameId]
+    );
+
+    if (gameResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+
+    const game = gameResult.rows[0];
+    const seamlessUsername = await ensureExternalPlayer(req.authUser);
+    const userAgent = String(req.headers['user-agent'] || '').toLowerCase();
+    const device = /mobile|android|iphone|ipad/i.test(userAgent) ? 'm' : 'd';
+    const gpId = Number(game.gp_id);
+    const upstreamGameId = Number(game.upstream_game_id);
+
+    const launchAttempts = [];
+
+    const directGamesLaunch = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
+      Username: seamlessUsername,
+      Portfolio: 'Games',
+      GpId: 0,
+      GameId: Number.isFinite(upstreamGameId) ? upstreamGameId : 0,
+      Device: device,
+      Lang: conf.lang,
+    });
+    launchAttempts.push({
+      mode: 'Games',
+      payload: {
+        Portfolio: 'Games',
+        GpId: 0,
+        GameId: Number.isFinite(upstreamGameId) ? upstreamGameId : 0,
+      },
+      error: directGamesLaunch.data?.error,
+      hasUrl: Boolean(directGamesLaunch.data?.url),
+    });
+
+    const directGamesErrorId = Number(directGamesLaunch.data?.error?.id ?? -1);
+    if (directGamesErrorId === 0 && directGamesLaunch.data?.url) {
+      const rawUrl = String(directGamesLaunch.data.url);
+      const launchUrl = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+      return res.json({
+        ok: true,
+        game: { id: game.id, title: game.title, provider: game.provider },
+        url: launchUrl,
+      });
+    }
+
+    const seamlessLaunch = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
+      Username: seamlessUsername,
+      Portfolio: 'SeamlessGame',
+      GpId: Number.isFinite(gpId) ? gpId : 10000,
+      GameId: Number.isFinite(upstreamGameId) ? upstreamGameId : 1,
+      Device: device,
+      Lang: conf.lang,
+    });
+    launchAttempts.push({
+      mode: 'SeamlessGame',
+      payload: {
+        Portfolio: 'SeamlessGame',
+        GpId: Number.isFinite(gpId) ? gpId : 10000,
+        GameId: Number.isFinite(upstreamGameId) ? upstreamGameId : 1,
+      },
+      error: seamlessLaunch.data?.error,
+      hasUrl: Boolean(seamlessLaunch.data?.url),
+    });
+
+    const seamlessErrorId = Number(seamlessLaunch.data?.error?.id ?? -1);
+    if (seamlessErrorId === 0 && seamlessLaunch.data?.url) {
+      const rawUrl = String(seamlessLaunch.data.url);
+      const launchUrl = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+      return res.json({
+        ok: true,
+        game: { id: game.id, title: game.title, provider: game.provider },
+        url: launchUrl,
+      });
+    }
+
+    return res.status(502).json({
+      error: 'Unable to open selected game in current provider configuration',
+      details: {
+        directGames: directGamesLaunch.data?.error || null,
+        seamlessGame: seamlessLaunch.data?.error || null,
+      },
+      attempts: launchAttempts,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Unable to launch game' });
+  }
+});
+
+const getSportsLaunchContext = (req) => {
+  const requestedPortfolio = String(req.body?.portfolio || '').trim();
+  const allowedPortfolios = new Set(['SportsBook', '568WinSportsbook']);
+  const portfolio = allowedPortfolios.has(requestedPortfolio) ? requestedPortfolio : 'SportsBook';
+  const userAgent = String(req.headers['user-agent'] || '').toLowerCase();
+  const device = /mobile|android|iphone|ipad/i.test(userAgent) ? 'm' : 'd';
+  return { portfolio, device };
+};
+
+const launchSportsbookForUsername = async ({ username, portfolio, device, lang }) => {
+  const launch = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
+    Username: username,
+    Portfolio: portfolio,
+    GpId: 0,
+    GameId: 0,
+    Device: device,
+    Lang: lang,
+  });
+
+  const launchErrorId = Number(launch.data?.error?.id ?? -1);
+  if (launchErrorId !== 0 || !launch.data?.url) {
+    return {
+      ok: false,
+      error: String(launch.data?.error?.msg || 'Unable to open sportsbook'),
+      details: launch.data?.error || launch.data,
+    };
+  }
+
+  const rawUrl = String(launch.data.url);
+  const url = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+  return { ok: true, url };
+};
+
+app.post('/api/auth/sports/launch', requireUserAuth, async (req, res) => {
+  try {
+    const conf = externalGameApiConfig();
+    if (!conf.ok) {
+      return res.status(500).json({ error: 'Production game API is not configured' });
+    }
+
+    const { portfolio, device } = getSportsLaunchContext(req);
+    const seamlessUsername = await ensureExternalPlayer(req.authUser);
+    const result = await launchSportsbookForUsername({
+      username: seamlessUsername,
+      portfolio,
+      device,
+      lang: conf.lang,
+    });
+
+    if (!result.ok) {
+      return res.status(502).json({ error: result.error, details: result.details });
+    }
+
+    return res.json({
+      ok: true,
+      portfolio,
+      url: result.url,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Unable to launch sportsbook' });
+  }
+});
+
+app.post('/api/sports/launch', async (req, res) => {
+  try {
+    const conf = externalGameApiConfig();
+    if (!conf.ok) {
+      return res.status(500).json({ error: 'Production game API is not configured' });
+    }
+    if (!conf.agent) {
+      return res.status(500).json({ error: 'SW_API_AGENT_USERNAME is required for guest sports launch' });
+    }
+
+    const { portfolio, device } = getSportsLaunchContext(req);
+    const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '0').split(',')[0].trim();
+    const ua = String(req.headers['user-agent'] || 'ua');
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const source = `${ip}|${ua}|${dayKey}`;
+    let checksum = 0;
+    for (let i = 0; i < source.length; i++) {
+      checksum = ((checksum << 5) - checksum + source.charCodeAt(i)) | 0;
+    }
+    const guestUsername = `gpz_guest_${Math.abs(checksum)}`.slice(0, 40);
+
+    const register = await callExternalGameApi('/web-root/restricted/player/register-player.aspx', {
+      Username: guestUsername,
+      Agent: conf.agent,
+      UserGroup: 'a',
+    });
+
+    const regErrorId = Number(register.data?.error?.id ?? -1);
+    const regErrorMsg = String(register.data?.error?.msg || '');
+    const canIgnore = regErrorId === 0 || /exist|duplicate|already/i.test(regErrorMsg);
+    if (!canIgnore) {
+      return res.status(502).json({ error: `Guest registration failed: ${regErrorMsg || 'unknown error'}` });
+    }
+
+    const result = await launchSportsbookForUsername({
+      username: guestUsername,
+      portfolio,
+      device,
+      lang: conf.lang,
+    });
+
+    if (!result.ok) {
+      return res.status(502).json({ error: result.error, details: result.details });
+    }
+
+    return res.json({
+      ok: true,
+      guest: true,
+      portfolio,
+      url: result.url,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Unable to launch sportsbook' });
   }
 });
 
@@ -394,6 +1752,15 @@ app.post('/api/admin/casino-games/seed', requireAdminAuth, async (req, res) => {
     await runCasinoSeed();
     const count = await query('SELECT COUNT(*)::int AS c FROM casino_games');
     return res.json({ ok: true, count: count.rows[0]?.c });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/casino-games/sync-live', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await syncLiveCasinoGames({ removeLegacyRows: true });
+    return res.json(result);
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -758,10 +2125,65 @@ app.post('/api/auth/deposits', requireUserAuth, async (req, res) => {
       ]
     );
 
+    const transaction = inserted.rows[0];
+    const conf = tkpayConfig();
+    const paymentChannelId = conf.channels[String(method.code || '').toLowerCase()];
+
+    if (conf.ok && paymentChannelId) {
+      const payload = compactTkpayPayload({
+        Amount: Number(transaction.amount),
+        CurrencyId: conf.currencyId,
+        IsTest: false,
+        PayerKey: String(req.authUser.id),
+        PayerName: String(req.authUser.full_name || req.authUser.username || `user-${req.authUser.id}`),
+        PaymentChannelId: paymentChannelId,
+        ShopInformUrl: conf.collectionCallback,
+        ShopOrderId: String(transaction.reference_id),
+        ShopReturnUrl: conf.returnUrl,
+        ShopUserLongId: conf.merchantId,
+      });
+
+      const result = await callTkpayApi('/api/createOrder', payload);
+      const metadata = {
+        tkpay_create_order: {
+          at: new Date().toISOString(),
+          is_test: payload.IsTest,
+          request: {
+            ...payload,
+            EncryptValue: undefined,
+          },
+          http_status: result.status,
+          response: result.data,
+        },
+      };
+
+      await query(
+        `UPDATE transactions
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+         WHERE id = $2`,
+        [JSON.stringify(metadata), transaction.id]
+      );
+
+      if (result.ok && result.data?.Success && result.data?.PayUrl) {
+        return res.status(201).json({
+          ok: true,
+          message: 'Deposit order created',
+          transaction,
+          payUrl: String(result.data.PayUrl),
+          trackingNumber: result.data.TrackingNumber || null,
+        });
+      }
+
+      return res.status(400).json({
+        ok: false,
+        error: result.data?.ErrorMessage || 'Failed to create TKPAY order',
+      });
+    }
+
     return res.status(201).json({
       ok: true,
       message: 'Deposit submitted and waiting for admin approval',
-      transaction: inserted.rows[0],
+      transaction,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -2172,6 +3594,88 @@ app.post('/api/admin/game-providers/:id/test', requireAdminAuth, async (req, res
   }
 });
 
+app.post('/api/admin/game-providers/sync-live', requireAdminAuth, async (req, res) => {
+  const conf = externalGameApiConfig();
+  if (!conf.ok) {
+    return res.status(500).json({ error: 'SW_API_BASE_URL, SW_API_COMPANY_KEY, and SW_API_SERVER_ID are required' });
+  }
+
+  const client = await getClient();
+  try {
+    const remote = await callExternalGameApi('/web-root/restricted/information/get-provider-info.aspx', {
+      GpId: 0,
+      IsGetAll: true,
+    });
+
+    const apiErrorId = Number(remote.data?.error?.id ?? -1);
+    if (apiErrorId !== 0) {
+      return res.status(502).json({
+        error: String(remote.data?.error?.msg || 'Provider info API failed'),
+        details: remote.data?.error || remote.data,
+      });
+    }
+
+    const providers = Array.isArray(remote.data?.data) ? remote.data.data : [];
+
+    await client.query('BEGIN');
+
+    for (const item of providers) {
+      const providerId = Number(item?.gpId);
+      if (!Number.isFinite(providerId)) {
+        continue;
+      }
+
+      const providerName = String(
+        item?.providerName?.en || item?.providerName?.cn || `Provider ${providerId}`
+      ).trim();
+      const providerType = String(item?.providerType || '').toLowerCase();
+      const supportedSections = providerType.includes('sport') ? 'sports' : 'casino';
+
+      await client.query(
+        `INSERT INTO game_providers (
+           external_provider_id,
+           name,
+           api_endpoint,
+           api_key,
+           supported_sections,
+           status,
+           last_sync_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,CURRENT_TIMESTAMP)
+         ON CONFLICT (external_provider_id)
+         DO UPDATE SET
+           name = EXCLUDED.name,
+           api_endpoint = EXCLUDED.api_endpoint,
+           supported_sections = EXCLUDED.supported_sections,
+           status = EXCLUDED.status,
+           last_sync_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP`,
+        [
+          providerId,
+          providerName,
+          `${conf.baseUrl}/web-root/restricted/player/v2/login.aspx`,
+          null,
+          supportedSections,
+          item?.isEnabled ? 'active' : 'inactive',
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    const count = await query('SELECT COUNT(*)::int AS c FROM game_providers');
+    return res.json({
+      ok: true,
+      synced: providers.length,
+      total: Number(count.rows[0]?.c || 0),
+      serverId: remote.data?.serverId || conf.serverId,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.get('/api/admin/seo-pages', requireAdminAuth, async (req, res) => {
   try {
     const result = await query('SELECT * FROM seo_pages ORDER BY path ASC');
@@ -2407,10 +3911,11 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
     }
 
     const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
-    const refNo = findReferenceNo(req.body);
+    const transferCode = findTransferCode(req.body);
+    const transactionId = findTransactionId(req.body);
     const amount = findAmount(req.body);
 
-    if (!username || !refNo || amount <= 0) {
+    if (!username || !transferCode || !transactionId || amount <= 0) {
       return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
     }
 
@@ -2435,13 +3940,75 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 2002, ErrorMessage: 'Member suspended' }));
     }
 
-    const existing = seamlessState.get(refNo);
-    if (existing) {
+    const transferKey = buildTransferKey(req.body, transferCode);
+    const txnKey = buildTxnKey(req.body, transferCode, transactionId);
+    const existingBet = seamlessStateByTransfer.get(transferKey);
+    const currentBalance = Number(user.balance || 0);
+
+    if (seamlessTransferByTxn.has(txnKey)) {
+      const existingKey = seamlessTransferByTxn.get(txnKey);
+      const existing = seamlessStateByTransfer.get(existingKey);
+      const existingTx = existing?.txs?.[String(transactionId)];
+
+      if (
+        existing &&
+        existingTx &&
+        existing.status === 'running' &&
+        supportsUpgradeableDuplicateDeduct(req.body) &&
+        amount > Number(existingTx.amount || 0)
+      ) {
+        const deltaAmount = Number((amount - Number(existingTx.amount || 0)).toFixed(5));
+        if (currentBalance < deltaAmount) {
+          await client.query('ROLLBACK');
+          return res.json(seamlessResponse({ AccountName: user.username, Balance: currentBalance, ErrorCode: 5, ErrorMessage: 'Insufficient balance' }));
+        }
+
+        const nextBalance = Number((currentBalance - deltaAmount).toFixed(5));
+        await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+        await client.query(
+          `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+           VALUES ($1, 'withdrawal', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+          [
+            user.id,
+            deltaAmount,
+            `SW-${transferCode}-${transactionId}-UPGRADE`,
+            JSON.stringify({ action: 'seamless_deduct_upgrade', transfer_code: transferCode, transaction_id: transactionId, previous_amount: Number(existingTx.amount || 0), requested_amount: amount }),
+          ]
+        );
+
+        const upgradedBet = {
+          ...existing,
+          stake_total: Number((Number(existing.stake_total || 0) + deltaAmount).toFixed(5)),
+          current_stake: Number((Number(existing.current_stake || 0) + deltaAmount).toFixed(5)),
+          last_action: 'deduct',
+          balance_after: nextBalance,
+          txs: {
+            ...(existing.txs || {}),
+            [String(transactionId)]: {
+              ...existingTx,
+              amount,
+              status: 'running',
+            },
+          },
+        };
+
+        saveSeamlessBet(existingKey, upgradedBet, req.body, transferCode, transactionId);
+        await client.query('COMMIT');
+        return res.json(seamlessResponse({ AccountName: user.username, BetAmount: amount.toFixed(1), Balance: nextBalance }));
+      }
+
       await client.query('ROLLBACK');
-      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
+      const duplicateCode = getDuplicateDeductErrorCode(req.body, existing);
+      return res.json(
+        seamlessResponse({
+          AccountName: user.username,
+          Balance: Number(existing?.balance_after ?? user.balance),
+          ErrorCode: duplicateCode,
+          ErrorMessage: 'Duplicate transaction',
+        })
+      );
     }
 
-    const currentBalance = Number(user.balance || 0);
     if (currentBalance < amount) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: currentBalance, ErrorCode: 5, ErrorMessage: 'Insufficient balance' }));
@@ -2452,21 +4019,47 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
     await client.query(
       `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
        VALUES ($1, 'withdrawal', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
-      [user.id, amount, `SW-${refNo}`, JSON.stringify({ action: 'seamless_deduct' })]
+      [user.id, amount, `SW-${transferCode}-${transactionId}`, JSON.stringify({ action: 'seamless_deduct', transfer_code: transferCode, transaction_id: transactionId })]
     );
 
-    seamlessState.set(refNo, {
-      username: user.username,
-      user_id: user.id,
-      amount,
-      status: 'running',
-      settled_amount: 0,
-      win_loss: 0,
-      cancel_count: 0,
-      rollback_count: 0,
-      last_action: 'deduct',
-      balance_after: nextBalance,
-    });
+    if (existingBet) {
+      const canReopenAfterPartialCancel =
+        existingBet.status === 'void' &&
+        existingBet.last_action === 'cancel' &&
+        existingBet.last_cancel_all === false;
+
+      if (existingBet.status !== 'running' && !canReopenAfterPartialCancel) {
+        await client.query('ROLLBACK');
+        return res.json(seamlessResponse({ AccountName: user.username, Balance: Number(existingBet.balance_after), ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
+      }
+
+      const updatedBet = {
+        ...existingBet,
+        status: 'running',
+        stake_total: Number((Number(existingBet.stake_total || 0) + amount).toFixed(5)),
+        current_stake: Number((Number(existingBet.current_stake || 0) + amount).toFixed(5)),
+        last_action: 'deduct',
+        balance_after: nextBalance,
+        txs: {
+          ...(existingBet.txs || {}),
+          [String(transactionId)]: {
+            amount,
+            status: 'running',
+          },
+        },
+      };
+      saveSeamlessBet(transferKey, updatedBet, req.body, transferCode, transactionId);
+    } else {
+      const bet = createSeamlessBet({
+        user,
+        payload: req.body,
+        transferCode,
+        transactionId,
+        amount,
+        balanceAfter: nextBalance,
+      });
+      saveSeamlessBet(transferKey, bet, req.body, transferCode, transactionId);
+    }
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, BetAmount: amount.toFixed(1), Balance: nextBalance }));
@@ -2487,10 +4080,10 @@ app.post(['/Settle', '/settle'], async (req, res) => {
     }
 
     const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
-    const refNo = findReferenceNo(req.body);
+    const transferCode = findTransferCode(req.body);
     const rawWinLoss = getBodyValue(req.body, 'WinLoss', 'WinLoseAmount', 'Amount', 'PayoutAmount');
     const winLoss = Number(rawWinLoss || 0);
-    if (!username || !refNo) {
+    if (!username || !transferCode) {
       return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
     }
 
@@ -2510,7 +4103,8 @@ app.post(['/Settle', '/settle'], async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const existing = seamlessState.get(refNo);
+    const transferKey = buildTransferKey(req.body, transferCode);
+    const existing = seamlessStateByTransfer.get(transferKey);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
@@ -2532,17 +4126,27 @@ app.post(['/Settle', '/settle'], async (req, res) => {
     await client.query(
       `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
        VALUES ($1, 'payout', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
-      [user.id, Math.abs(winLoss), `SW-${refNo}-SETTLE`, JSON.stringify({ action: 'seamless_settle', win_loss: winLoss })]
+      [user.id, Math.abs(winLoss), `SW-${transferCode}-SETTLE`, JSON.stringify({ action: 'seamless_settle', win_loss: winLoss, transfer_code: transferCode })]
     );
 
-    seamlessState.set(refNo, {
-      ...(existing || { username: user.username, user_id: user.id, amount: 0 }),
+    const updated = {
+      ...existing,
       status: 'settled',
       balance_after: nextBalance,
-      win_loss: winLoss,
-      settled_amount: winLoss,
+      settled_win_loss: Number(winLoss.toFixed(5)),
+      settled_count: Number(existing.settled_count || 0) + 1,
       last_action: 'settle',
-    });
+      txs: Object.fromEntries(
+        Object.entries(existing.txs || {}).map(([id, tx]) => [
+          id,
+          {
+            ...tx,
+            status: tx?.status === 'void' ? 'void' : 'settled',
+          },
+        ])
+      ),
+    };
+    seamlessStateByTransfer.set(transferKey, updated);
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
@@ -2563,8 +4167,10 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
     }
 
     const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
-    const refNo = findReferenceNo(req.body);
-    if (!username || !refNo) {
+    const transferCode = findTransferCode(req.body);
+    const transactionId = findTransactionId(req.body);
+    const isCancelAll = Boolean(getBodyValue(req.body, 'IsCancelAll'));
+    if (!username || !transferCode) {
       return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
     }
 
@@ -2584,7 +4190,8 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const existing = seamlessState.get(refNo);
+    const transferKey = buildTransferKey(req.body, transferCode);
+    const existing = seamlessStateByTransfer.get(transferKey);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
@@ -2596,23 +4203,69 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
     }
 
     const currentBalance = Number(user.balance || 0);
-    const stake = Number(existing.amount || 0);
-    const settledAmount = Number(existing.win_loss || 0);
-    const netChange = existing.status === 'settled' ? stake - settledAmount : stake;
+    let netChange = 0;
+    let resolvedCancelTxnId = transactionId;
+    let cancelByTransferFallback = false;
+
+    if (!isCancelAll && transactionId && existing.status === 'running') {
+      const tx = existing.txs?.[String(transactionId)];
+      if (!tx) {
+        // Some providers send a new cancel transaction id while still targeting the same transfer.
+        // Fall back to transfer-level cancel on active stake instead of hard-failing reference lookup.
+        cancelByTransferFallback = true;
+        netChange = Number(existing.current_stake || 0);
+      }
+      if (tx && tx.status === 'void') {
+        await client.query('ROLLBACK');
+        return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 2002, ErrorMessage: 'Already canceled' }));
+      }
+      if (tx) {
+        netChange = Number(tx.amount || 0);
+        resolvedCancelTxnId = String(transactionId);
+      }
+    } else {
+      const stake = Number(existing.current_stake || 0);
+      const settledAmount = Number(existing.settled_win_loss || 0);
+      netChange = existing.status === 'settled' ? stake - settledAmount : stake;
+    }
+
     const nextBalance = Number((currentBalance + netChange).toFixed(5));
     await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
     await client.query(
       `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
        VALUES ($1, 'payout', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
-      [user.id, Math.abs(netChange), `SW-${refNo}-ROLLBACK`, JSON.stringify({ action: 'seamless_rollback', net_change: netChange })]
+      [user.id, Math.abs(netChange), `SW-${transferCode}-CANCEL`, JSON.stringify({ action: 'seamless_cancel', net_change: netChange, transfer_code: transferCode, transaction_id: transactionId || null, is_cancel_all: isCancelAll })]
     );
 
-    seamlessState.set(refNo, {
+    const nextTxs = { ...(existing.txs || {}) };
+    if (!isCancelAll && resolvedCancelTxnId && nextTxs[String(resolvedCancelTxnId)] && !cancelByTransferFallback) {
+      nextTxs[String(resolvedCancelTxnId)] = {
+        ...nextTxs[String(resolvedCancelTxnId)],
+        status: 'void',
+      };
+    } else {
+      Object.keys(nextTxs).forEach((id) => {
+        nextTxs[id] = {
+          ...nextTxs[id],
+          status: 'void',
+        };
+      });
+    }
+
+    const runningStake = Object.values(nextTxs)
+      .filter((tx) => tx.status === 'running')
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+
+    seamlessStateByTransfer.set(transferKey, {
       ...existing,
-      status: 'void',
+      status: runningStake > 0 ? 'running' : 'void',
+      current_stake: Number(runningStake.toFixed(5)),
       cancel_count: Number(existing.cancel_count || 0) + 1,
+      last_cancel_all: Boolean(isCancelAll),
+      last_cancel_refund: Number(netChange.toFixed(5)),
       last_action: 'cancel',
       balance_after: nextBalance,
+      txs: nextTxs,
     });
 
     await client.query('COMMIT');
@@ -2634,8 +4287,8 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
     }
 
     const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
-    const refNo = findReferenceNo(req.body);
-    if (!username || !refNo) {
+    const transferCode = findTransferCode(req.body);
+    if (!username || !transferCode) {
       return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
     }
 
@@ -2655,20 +4308,22 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const existing = seamlessState.get(refNo);
+    const transferKey = buildTransferKey(req.body, transferCode);
+    const existing = seamlessStateByTransfer.get(transferKey);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
     }
 
-    if (existing.last_action === 'rollback' || Number(existing.rollback_count || 0) > 0) {
+    if (existing.status === 'running') {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 2003, ErrorMessage: 'Already rollback' }));
     }
 
     const currentBalance = Number(user.balance || 0);
-    const stake = Number(existing.amount || 0);
-    const winLoss = Number(existing.win_loss || 0);
+    const stake = Number(existing.current_stake || 0);
+    const totalStake = Number(existing.stake_total || 0);
+    const winLoss = Number(existing.settled_win_loss || 0);
     let nextBalance = currentBalance;
     let metadata = { action: 'seamless_rollback', win_loss: winLoss };
 
@@ -2676,8 +4331,9 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
       nextBalance = Number((currentBalance - winLoss).toFixed(5));
     } else if (existing.status === 'void' && existing.last_action === 'cancel') {
       // Reopen a canceled bet by reversing the prior cancel refund.
-      nextBalance = Number((currentBalance - stake).toFixed(5));
-      metadata = { action: 'seamless_rollback_cancel_reopen', stake };
+      const reopenStake = totalStake > 0 ? totalStake : Math.max(0, Number(existing.last_cancel_refund || 0));
+      nextBalance = Number((currentBalance - reopenStake).toFixed(5));
+      metadata = { action: 'seamless_rollback_cancel_reopen', stake: reopenStake };
     } else {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 6, ErrorMessage: 'Cannot rollback current status' }));
@@ -2687,15 +4343,26 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
     await client.query(
       `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
        VALUES ($1, 'withdrawal', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
-      [user.id, Math.abs(currentBalance - nextBalance), `SW-${refNo}-ROLLBACK`, JSON.stringify(metadata)]
+      [user.id, Math.abs(currentBalance - nextBalance), `SW-${transferCode}-ROLLBACK`, JSON.stringify({ ...metadata, transfer_code: transferCode })]
     );
 
-    seamlessState.set(refNo, {
+    seamlessStateByTransfer.set(transferKey, {
       ...existing,
       status: 'running',
+      current_stake: Number((existing.status === 'void' && existing.last_action === 'cancel' ? (totalStake > 0 ? totalStake : Math.max(0, Number(existing.last_cancel_refund || 0))) : stake).toFixed(5)),
+      settled_win_loss: 0,
       rollback_count: Number(existing.rollback_count || 0) + 1,
       last_action: 'rollback',
       balance_after: nextBalance,
+      txs: Object.fromEntries(
+        Object.entries(existing.txs || {}).map(([id, tx]) => [
+          id,
+          {
+            ...tx,
+            status: 'running',
+          },
+        ])
+      ),
     });
 
     await client.query('COMMIT');
@@ -2717,7 +4384,8 @@ app.post(['/Bonus', '/bonus'], async (req, res) => {
     }
 
     const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
-    const refNo = findReferenceNo(req.body) || `BONUS-${Date.now()}`;
+    const transferCode = findTransferCode(req.body) || findReferenceNo(req.body) || `BONUS-${Date.now()}`;
+    const transactionId = findTransactionId(req.body) || transferCode;
     const amount = findAmount(req.body);
     if (!username || amount <= 0) {
       return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Invalid request data' }));
@@ -2739,10 +4407,11 @@ app.post(['/Bonus', '/bonus'], async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    if (seamlessState.has(refNo)) {
+    const transferKey = buildTransferKey(req.body, transferCode);
+    if (seamlessStateByTransfer.has(transferKey)) {
       await client.query('ROLLBACK');
-      const existing = seamlessState.get(refNo);
-      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after }));
+      const existing = seamlessStateByTransfer.get(transferKey);
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
     }
 
     const currentBalance = Number(user.balance || 0);
@@ -2751,17 +4420,29 @@ app.post(['/Bonus', '/bonus'], async (req, res) => {
     await client.query(
       `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
        VALUES ($1, 'deposit', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
-      [user.id, amount, `SW-${refNo}-BONUS`, JSON.stringify({ action: 'seamless_bonus' })]
+      [user.id, amount, `SW-${transferCode}-BONUS`, JSON.stringify({ action: 'seamless_bonus', transfer_code: transferCode, transaction_id: transactionId })]
     );
 
-    seamlessState.set(refNo, {
+    const bet = {
       username: user.username,
       user_id: user.id,
       amount,
       status: 'settled',
       balance_after: nextBalance,
       payout: amount,
-    });
+      transfer_code: transferCode,
+      primary_transaction_id: transactionId,
+      txs: {
+        [String(transactionId)]: {
+          amount,
+          status: 'settled',
+        },
+      },
+      current_stake: 0,
+      settled_win_loss: amount,
+      return_stake_history: {},
+    };
+    saveSeamlessBet(transferKey, bet, req.body, transferCode, transactionId);
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
@@ -2785,27 +4466,142 @@ app.post(['/GetBetStatus', '/getbetstatus'], async (req, res) => {
       return res.json({ ErrorCode: '3', ErrorMessage: 'Username is required' });
     }
 
-    const refNo = findReferenceNo(req.body);
-    const existing = refNo ? seamlessState.get(refNo) : null;
+    const transferCode = findTransferCode(req.body);
+    const transactionId = findTransactionId(req.body);
+    const located = getBetByPayload(req.body);
+    const existing = located.bet;
     if (!existing) {
       return res.json({
-        TransferCode: refNo,
-        TransactionId: refNo,
+        TransferCode: transferCode,
+        TransactionId: transactionId || transferCode,
         Status: 'Unknown',
         ErrorCode: '6',
         ErrorMessage: 'Bet not found',
       });
     }
 
+    const requestedTxId = transactionId ? String(transactionId) : '';
+    const txEntry = requestedTxId ? existing.txs?.[requestedTxId] : null;
+
+    if (requestedTxId && !txEntry) {
+      return res.json({
+        TransferCode: existing.transfer_code || transferCode,
+        TransactionId: requestedTxId,
+        Status: 'Unknown',
+        ErrorCode: '6',
+        ErrorMessage: 'Bet not found',
+      });
+    }
+
+    const resolvedStatus = txEntry
+      ? mapSeamlessStatus(txEntry.status || existing.status)
+      : mapSeamlessStatus(existing.status);
+
     return res.json({
-      TransferCode: refNo,
-      TransactionId: refNo,
-      Status: mapSeamlessStatus(existing.status),
+      TransferCode: existing.transfer_code || transferCode,
+      TransactionId: transactionId || existing.primary_transaction_id || existing.transfer_code || transferCode,
+      Status: resolvedStatus,
       ErrorCode: '0',
       ErrorMessage: 'No Error',
     });
   } catch (error) {
     return res.json({ ErrorCode: '1', ErrorMessage: error.message || 'Internal error' });
+  }
+});
+
+app.post(['/ReturnStake', '/returnstake'], async (req, res) => {
+  const client = await getClient();
+  try {
+    const companyKey = getBodyValue(req.body, 'CompanyKey');
+    if (!isCompanyKeyValid(companyKey)) {
+      return res.json(seamlessResponse({ ErrorCode: 4, ErrorMessage: 'Invalid CompanyKey' }));
+    }
+
+    const username = getBodyValue(req.body, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName');
+    const transferCode = findTransferCode(req.body);
+    const transactionId = findTransactionId(req.body);
+    const currentStake = findNumeric(req.body, 'CurrentStake');
+
+    if (!username || !transferCode || !transactionId) {
+      return res.json(seamlessResponse({ ErrorCode: 3, ErrorMessage: 'Invalid request data' }));
+    }
+
+    await client.query('BEGIN');
+    const userResult = await client.query(
+      `SELECT id, username, balance
+       FROM users
+       WHERE LOWER(username) = LOWER($1)
+       LIMIT 1
+       FOR UPDATE`,
+      [String(username)]
+    );
+
+    if (!userResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: 'Member not found' }));
+    }
+
+    const user = userResult.rows[0];
+    const transferKey = buildTransferKey(req.body, transferCode);
+    const bet = seamlessStateByTransfer.get(transferKey);
+    if (!bet) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
+    }
+
+    if (bet.status === 'settled') {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: bet.balance_after, ErrorCode: 2001, ErrorMessage: 'Already settled' }));
+    }
+
+    if (bet.status === 'void') {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: bet.balance_after, ErrorCode: 2002, ErrorMessage: 'Already canceled' }));
+    }
+
+    const requestKey = `${transactionId}:${currentStake}`;
+    if (bet.return_stake_history?.[requestKey]) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: bet.balance_after, ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
+    }
+
+    const existingStake = Number(bet.current_stake || 0);
+    if (currentStake > existingStake || currentStake < 0) {
+      await client.query('ROLLBACK');
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: bet.balance_after, ErrorCode: 3, ErrorMessage: 'Invalid current stake' }));
+    }
+
+    const refund = Number((existingStake - currentStake).toFixed(5));
+    const userBalance = Number(user.balance || 0);
+    const nextBalance = Number((userBalance + refund).toFixed(5));
+
+    if (refund > 0) {
+      await client.query('UPDATE users SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [nextBalance, user.id]);
+      await client.query(
+        `INSERT INTO transactions (user_id, type, amount, status, reference_id, payment_method, metadata)
+         VALUES ($1, 'deposit', $2, 'completed', $3, 'seamless_wallet', $4::jsonb)`,
+        [user.id, refund, `SW-${transferCode}-RETURNSTAKE`, JSON.stringify({ action: 'seamless_return_stake', transfer_code: transferCode, transaction_id: transactionId, from_stake: existingStake, to_stake: currentStake })]
+      );
+    }
+
+    seamlessStateByTransfer.set(transferKey, {
+      ...bet,
+      current_stake: Number(currentStake.toFixed(5)),
+      balance_after: nextBalance,
+      last_action: 'returnstake',
+      return_stake_history: {
+        ...(bet.return_stake_history || {}),
+        [requestKey]: true,
+      },
+    });
+
+    await client.query('COMMIT');
+    return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
+  } catch (error) {
+    await client.query('ROLLBACK');
+    return res.json(seamlessResponse({ ErrorCode: 1, ErrorMessage: error.message || 'Internal error' }));
+  } finally {
+    client.release();
   }
 });
 

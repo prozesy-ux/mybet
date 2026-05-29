@@ -1,0 +1,50 @@
+﻿{
+    "generatedAt":  "2026-05-23T20:30:24.6452857+05:30",
+    "note":  "Final cycle after user manual bet amount 10; ticket UI showed ID 4937968",
+    "window":  {
+                   "portfolio":  "SportsBook",
+                   "startDate":  "2026-05-23T14:54:00Z",
+                   "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+                   "serverId":  "GPZES01",
+                   "endDate":  "2026-05-23T15:05:00Z"
+               },
+    "extracted":  {
+                      "refNo":  null,
+                      "txnId":  null
+                  },
+    "getBetListByModify":  {
+                               "ok":  true,
+                               "path":  "/web-root/restricted/report/v2/get-bet-list-by-modify-date.aspx",
+                               "request":  {
+                                               "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+                                               "portfolio":  "SportsBook",
+                                               "language":  "en",
+                                               "isGetDownline":  false,
+                                               "startDate":  "2026-05-23T14:54:00Z",
+                                               "serverId":  "GPZES01",
+                                               "endDate":  "2026-05-23T15:05:00Z"
+                                           },
+                               "response":  {
+                                                "result":  [
+
+                                                           ],
+                                                "serverId":  "YY-demoanduat",
+                                                "error":  {
+                                                              "id":  0,
+                                                              "msg":  "No Error"
+                                                          }
+                                            }
+                           },
+    "getBetListByRefNos":  {
+                               "skipped":  true,
+                               "reason":  "No ref found from 5.4"
+                           },
+    "getBetPayload":  {
+                          "skipped":  true,
+                          "reason":  "No ref found from 5.4"
+                      },
+    "resendOrder":  {
+                        "skipped":  true,
+                        "reason":  "No txnId found from 5.6"
+                    }
+}

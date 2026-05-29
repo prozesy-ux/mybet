@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || (typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin);
+import { API_BASE } from "./apiBase";
 const USER_TOKEN_KEY = "user-auth-token";
 
 export interface AuthUser {
@@ -82,6 +82,19 @@ export interface PlaceBetResult {
   balance: string;
 }
 
+export interface CasinoLaunchResult {
+  ok: boolean;
+  fallback?: boolean;
+  game: { id: number; title: string; provider: string };
+  url: string;
+}
+
+export interface SportsLaunchResult {
+  ok: boolean;
+  portfolio: 'SportsBook' | '568WinSportsbook';
+  url: string;
+}
+
 export const userTokenStore = {
   get() {
     return localStorage.getItem(USER_TOKEN_KEY);
@@ -158,9 +171,13 @@ export const userApi = {
   paymentMethods: (methodType: "deposit" | "withdrawal") =>
     request<PaymentMethod[]>(`/api/payment-methods?type=${methodType}`),
   createDeposit: (payload: { amount: number; payment_method: string; provider_name?: string }) =>
-    request<{ ok: boolean; message: string; transaction: UserTransaction }>("/api/auth/deposits", {
+    request<{ ok: boolean; message: string; transaction: UserTransaction; payUrl?: string; trackingNumber?: string | null }>("/api/auth/deposits", {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+  confirmDeposit: (referenceId: string) =>
+    request<{ ok: boolean; status: "pending" | "completed" | "cancelled"; transactionId: number; credited: boolean }>(`/api/auth/deposits/${encodeURIComponent(referenceId)}/confirm`, {
+      method: "POST",
     }),
   createWithdrawal: (payload: { amount: number; payment_method: string; account_number: string; provider_name?: string }) =>
     request<{ ok: boolean; message: string; transaction: UserTransaction }>("/api/auth/withdrawals", {
@@ -175,6 +192,20 @@ export const userApi = {
     request<PlaceBetResult>("/api/auth/bets/place", {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+  launchCasinoGame: (id: number) =>
+    request<CasinoLaunchResult>(`/api/auth/casino/launch/${id}`, {
+      method: "POST",
+    }),
+  launchSportsbook: (payload?: { portfolio?: 'SportsBook' | '568WinSportsbook' }) =>
+    request<SportsLaunchResult>("/api/auth/sports/launch", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    }),
+  launchSportsbookPublic: (payload?: { portfolio?: 'SportsBook' | '568WinSportsbook' }) =>
+    request<SportsLaunchResult>("/api/sports/launch", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
     }),
   profileStats: () => request<UserProfileStats>("/api/auth/profile-stats"),
 };

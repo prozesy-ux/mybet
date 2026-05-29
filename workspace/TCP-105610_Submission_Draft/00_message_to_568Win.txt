@@ -1,17 +1,25 @@
 Hello team,
 
-TCP-105610 precheck completed.
+TCP-105610 precheck and setup confirmation completed.
 
 Step 1 (IP whitelist): Completed
 Step 2 (Seamless Wallet API integration + test page): Completed
 - All product types tested
 - Need To Fix Count = 0
 
+Step 3 activation information:
+- Environment: Demo
+- BO Account: baje247test
+- Callback URL (whitelist active): https://api.gpzes.com/
+- Seamless Wallet Company Key: 799DCB01CFB9489CB2DF42D9B0743F59
+- Agent account: gpzes_agent01 (created)
+- Test player: baje247pl01 (exists, 500 balance)
+
 Attached for checking:
 1. Seamless Wallet test result HTML file (Webpage, Complete)
 2. Final pass screenshot
 3. IP whitelist proof screenshot
 
-Please verify and proceed with staging credential sharing.
+Please verify and proceed with staging credential sharing / activation.
 
 Thank you.

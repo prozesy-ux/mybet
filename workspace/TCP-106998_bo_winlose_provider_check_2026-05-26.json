@@ -1,0 +1,48 @@
+{
+  "source": "Back Office 4.1 Win Lose",
+  "url": "https://admin-demo-ng.568win.com/apicustomer/winlose",
+  "checkedAt": "2026-05-26T14:11:22-04:00",
+  "account": "baje247test",
+  "filterUsername": "baje247pl01",
+  "providersObserved": [
+    {
+      "provider": "(SBO) Slots",
+      "expanded": true,
+      "usdBetCount": 6
+    },
+    {
+      "provider": "568winGaming",
+      "expanded": true,
+      "usdBetCount": 13
+    },
+    {
+      "provider": "SBO Virtual Sports",
+      "expanded": true,
+      "usdBetCount": 1
+    },
+    {
+      "provider": "AFB Sports",
+      "expanded": true,
+      "usdBetCount": 2
+    },
+    {
+      "provider": "SBO Live Casino",
+      "expanded": true,
+      "usdBetCount": 2
+    },
+    {
+      "provider": "AFB Gaming",
+      "expanded": true,
+      "usdBetCount": 6
+    }
+  ],
+  "totals": {
+    "usdBetCount": 30,
+    "notes": "All visible provider groups in BO have non-zero bet count in this view."
+  },
+  "mappingAssumptions": {
+    "SportsBook_or_ThirdPartySportsBook": "AFB Sports",
+    "VirtualSports": "SBO Virtual Sports",
+    "Games_or_SeamlessGame": "AFB Gaming and/or (SBO) Slots/568winGaming depending on internal portfolio mapping"
+  }
+}

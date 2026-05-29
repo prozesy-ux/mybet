@@ -25,6 +25,17 @@ Text extraction file:
   - Example: http://abcd.com
 - In Back Office callback URL setup (Step 3): each callback URL MUST end with slash (/)
 
+### TLS compatibility rules (critical)
+- The test domain must present a publicly trusted RSA certificate chain.
+- Avoid ECDSA-only certificates for the Seamless Wallet test domain, because older .NET clients can fail with:
+  - `System.Net.WebException: The request was aborted: Could not create SSL/TLS secure channel.`
+- If using Cloudflare custom domain:
+  - Keep SSL/TLS mode `Full (strict)`.
+  - Set Minimum TLS Version to `TLS 1.0` during 568Win testing for maximum legacy compatibility.
+  - Use an RSA edge certificate for the API hostname (for example, api.gpzes.com).
+  - Confirm the domain serves full certificate chain and hostname matches SAN.
+- If still failing from 568Win side, temporarily test with a known RSA-backed endpoint/domain and re-run all product tests.
+
 ## Currency Ratio Rules
 - 1:1000 for IDR / VND / MYK
   - 1 credit = 1000 currency units
@@ -82,6 +93,10 @@ Fill test page fields:
 - Domain: your callback domain without trailing slash
 - CompanyKey: your Company Key (or random string per SOP)
 - Test Username: existing player account with 500 balance
+
+Before running test page:
+- Verify the domain certificate is RSA and not ECDSA-only.
+- Verify HTTPS handshake works from legacy clients (PowerShell/.NET Framework).
 
 Pass condition:
 - Need To Fix Count = 0

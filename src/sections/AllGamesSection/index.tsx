@@ -1,5 +1,4 @@
 import { AllGamesGrid } from "@/sections/AllGamesSection/components/AllGamesGrid";
-import { LoadMore } from "@/components/LoadMore";
 
 export const AllGamesSection = () => {
   return (
@@ -21,7 +20,6 @@ export const AllGamesSection = () => {
         </div>
         <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px]">
           <AllGamesGrid />
-          <LoadMore />
         </div>
       </div>
     </div>

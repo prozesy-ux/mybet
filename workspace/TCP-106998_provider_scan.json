@@ -1,0 +1,58 @@
+﻿{
+    "generatedAt":  "2026-05-23T21:18:26.8391784+05:30",
+    "window":  {
+                   "start":  "2026-05-20T00:00:00Z",
+                   "end":  "2026-05-24T00:00:00Z"
+               },
+    "summary":  [
+                    {
+                        "portfolio":  "Casino",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    },
+                    {
+                        "portfolio":  "Games",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    },
+                    {
+                        "portfolio":  "SeamlessGame",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    },
+                    {
+                        "portfolio":  "ThirdPartySportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    },
+                    {
+                        "portfolio":  "VirtualSports",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    },
+                    {
+                        "portfolio":  "568WinSportsbook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    },
+                    {
+                        "portfolio":  "SportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "sample":  null
+                    }
+                ]
+}

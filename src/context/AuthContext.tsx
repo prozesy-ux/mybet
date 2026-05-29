@@ -91,6 +91,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    const token = userTokenStore.get();
+    if (!token) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const depositRef = params.get("deposit_ref");
+    if (!depositRef) {
+      return;
+    }
+
+    let cancelled = false;
+    userApi
+      .confirmDeposit(depositRef)
+      .catch(() => null)
+      .finally(() => {
+        if (cancelled) {
+          return;
+        }
+        void refreshUser();
+        params.delete("deposit_ref");
+        const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", next);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!userTokenStore.get()) {
       return;
     }

@@ -1,0 +1,115 @@
+﻿{
+    "generatedAt":  "2026-05-23T21:20:27.3103059+05:30",
+    "window":  {
+                   "start":  "2026-05-22T00:00:00.0000000-04:00",
+                   "end":  "2026-05-24T00:00:00.0000000-04:00"
+               },
+    "rows":  [
+                 {
+                     "portfolio":  "Casino",
+                     "totalCount":  0,
+                     "sampleCount":  0,
+                     "samples":  [
+
+                                 ]
+                 },
+                 {
+                     "portfolio":  "Games",
+                     "totalCount":  0,
+                     "sampleCount":  0,
+                     "samples":  [
+
+                                 ]
+                 },
+                 {
+                     "portfolio":  "SeamlessGame",
+                     "totalCount":  0,
+                     "sampleCount":  0,
+                     "samples":  [
+
+                                 ]
+                 },
+                 {
+                     "portfolio":  "ThirdPartySportsBook",
+                     "totalCount":  0,
+                     "sampleCount":  0,
+                     "samples":  [
+
+                                 ]
+                 },
+                 {
+                     "portfolio":  "VirtualSports",
+                     "totalCount":  0,
+                     "sampleCount":  0,
+                     "samples":  [
+
+                                 ]
+                 },
+                 {
+                     "portfolio":  "568WinSportsbook",
+                     "totalCount":  0,
+                     "sampleCount":  0,
+                     "samples":  [
+
+                                 ]
+                 },
+                 {
+                     "portfolio":  "SportsBook",
+                     "totalCount":  1,
+                     "sampleCount":  1,
+                     "samples":  [
+                                     {
+                                         "subBet":  [
+                                                        {
+                                                            "betOption":  "2",
+                                                            "marketType":  "Money Line",
+                                                            "sportType":  "Table Tennis",
+                                                            "hdp":  0.00,
+                                                            "odds":  2.63,
+                                                            "league":  "Setka Cup - Men\u0027s Singles (Set Handicap)",
+                                                            "match":  "Jan Marhol vs David Brichacek",
+                                                            "status":  "waiting rejected",
+                                                            "winlostDate":  "2026-05-23T00:00:00.000",
+                                                            "liveScore":  "0:0",
+                                                            "htScore":  "0:0",
+                                                            "ftScore":  "3:1",
+                                                            "customeizedBetType":  "",
+                                                            "kickOffTime":  "2026-05-23T10:45:00.000",
+                                                            "isHalfWonLose":  false
+                                                        }
+                                                    ],
+                                         "sportsType":  "Table Tennis",
+                                         "odds":  2.630,
+                                         "oddsStyle":  "E",
+                                         "isLive":  true,
+                                         "maxWinWithoutActualStake":  16.300000000,
+                                         "ip":  "192.166.246.98",
+                                         "isSystemTagRisky":  false,
+                                         "isCustomerTagRisky":  false,
+                                         "voidReason":  "",
+                                         "isCashOut":  false,
+                                         "isFreeBet":  false,
+                                         "actualStake":  10.000000,
+                                         "turnover":  0.0,
+                                         "isHalfWonLose":  false,
+                                         "turnoverByStake":  10.000000,
+                                         "turnoverByActualStake":  10.000000,
+                                         "netTurnoverByStake":  0.0,
+                                         "netTurnoverByActualStake":  0.0,
+                                         "orderTime":  "2026-05-23T10:58:54.707",
+                                         "modifyDate":  "2026-05-23T11:06:05.453",
+                                         "settleTime":  "2026-05-23T11:06:05.453",
+                                         "winLostDate":  "2026-05-23T00:00:00.000",
+                                         "refNo":  "4937968",
+                                         "username":  "baje247pl01",
+                                         "currency":  "USD",
+                                         "stake":  10.000000,
+                                         "winLost":  0.000000,
+                                         "status":  "void",
+                                         "topDownline":  "Baje247test",
+                                         "newGameType":  0
+                                     }
+                                 ]
+                 }
+             ]
+}

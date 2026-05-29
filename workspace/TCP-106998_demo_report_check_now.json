@@ -1,0 +1,46 @@
+﻿{
+    "generatedAt":  "2026-05-26T23:21:11.0737921+05:30",
+    "window":  {
+                   "startDate":  "2026-05-26T11:51:10Z",
+                   "endDate":  "2026-05-26T17:51:10Z"
+               },
+    "username":  "baje247pl01",
+    "summary":  [
+                    {
+                        "portfolio":  "Casino",
+                        "count":  2,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "portfolio":  "SeamlessGame",
+                        "count":  25,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "portfolio":  "ThirdPartySportsBook",
+                        "count":  2,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "portfolio":  "SportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "portfolio":  "568WinSportsbook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "portfolio":  "Games",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    }
+                ]
+}

@@ -13,11 +13,6 @@ const FIAT_PROVIDERS = [
     name: "Nagad",
     logo: "https://files.v1.distcdn.net/v1/objects/6ebd6ca3-2592-405a-8f89-198bb44ea372",
   },
-  {
-    id: "upay",
-    name: "Upay",
-    logo: "https://files.v1.distcdn.net/v1/objects/87a930bd-c0ca-4c7e-a08c-d6122d51cf55",
-  },
 ];
 
 type ProviderOption = {
@@ -32,7 +27,6 @@ type ProviderOption = {
 const logoByCode: Record<string, string> = {
   bkash: "https://files.v1.distcdn.net/v1/objects/513306c6-1563-46db-aab5-5e4e5bb4563a",
   nagad: "https://files.v1.distcdn.net/v1/objects/6ebd6ca3-2592-405a-8f89-198bb44ea372",
-  upay: "https://files.v1.distcdn.net/v1/objects/87a930bd-c0ca-4c7e-a08c-d6122d51cf55",
 };
 
 export const DepositModal = () => {

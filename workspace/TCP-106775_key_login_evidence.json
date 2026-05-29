@@ -1,0 +1,117 @@
+﻿{
+    "generatedAt":  "2026-05-23T19:33:49.3147230+05:30",
+    "base":  "https://ex-api-demo-yy.568win.com",
+    "getCurrentKey_before":  {
+                                 "ok":  true,
+                                 "path":  "/web-root/restricted/system/get-current-key-info",
+                                 "request":  {
+                                                 "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                                 "serverId":  "GPZES01"
+                                             },
+                                 "response":  {
+                                                  "result":  [
+                                                                 {
+                                                                     "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                                                     "apiType":  "Operation",
+                                                                     "scope":  "All",
+                                                                     "expirationDate":  "2026-06-17T00:00:00.000"
+                                                                 },
+                                                                 {
+                                                                     "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                                                     "apiType":  "SeamlessWallet",
+                                                                     "scope":  "All",
+                                                                     "expirationDate":  "2026-06-17T00:00:00.000"
+                                                                 }
+                                                             ],
+                                                  "error":  {
+                                                                "id":  0,
+                                                                "msg":  "No Error"
+                                                            }
+                                              }
+                             },
+    "newLogin":  {
+                     "ok":  true,
+                     "path":  "/web-root/restricted/player/v2/login.aspx",
+                     "request":  {
+                                     "oddstyle":  "MY",
+                                     "Device":  "d",
+                                     "Lang":  "EN",
+                                     "ProductId":  0,
+                                     "RecommendMatchId":  0,
+                                     "GameId":  0,
+                                     "CompanyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                     "BetCode":  "",
+                                     "IsWapSports":  false,
+                                     "GpId":  0,
+                                     "theme":  "sbomain",
+                                     "Username":  "baje247pl01",
+                                     "ServerId":  "GPZES01",
+                                     "oddsmode":  "double",
+                                     "Portfolio":  "SportsBook"
+                                 },
+                     "response":  {
+                                      "url":  "//sportsbook-auth-demo.ggppqqgg.com/welcome2.aspx?token=37716689.cEldgoqmxeFWZSjcqwQVFPCvO.821\u0026isAppDownload=true\u0026lang=EN\u0026device=d\u0026oddStyle=MY\u0026theme=sbomain\u0026oddsmode=double\u0026recommendmatchid=0",
+                                      "serverId":  "YY-demoanduat",
+                                      "error":  {
+                                                    "id":  0,
+                                                    "msg":  "No Error"
+                                                }
+                                  }
+                 },
+    "regenerateKey":  {
+                          "ok":  true,
+                          "path":  "/web-root/restricted/system/regenerate-key",
+                          "request":  {
+                                          "apiType":  "Operation",
+                                          "scope":  "All",
+                                          "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                          "serverId":  "GPZES01"
+                                      },
+                          "response":  {
+                                           "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+                                           "apiType":  "Operation",
+                                           "scope":  "All",
+                                           "expirationDate":  "2026-06-22T00:00:00.000",
+                                           "serverId":  "YY-demoanduat",
+                                           "error":  {
+                                                         "id":  0,
+                                                         "msg":  "No Error"
+                                                     }
+                                       }
+                      },
+    "activeKeyAfter":  "CB768EF40A78496AAB6815E1C92A548D",
+    "getCurrentKey_after":  {
+                                "ok":  true,
+                                "path":  "/web-root/restricted/system/get-current-key-info",
+                                "request":  {
+                                                "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+                                                "serverId":  "GPZES01"
+                                            },
+                                "response":  {
+                                                 "result":  [
+                                                                {
+                                                                    "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                                                    "apiType":  "Operation",
+                                                                    "scope":  "All",
+                                                                    "expirationDate":  "2026-05-30T00:00:00.000"
+                                                                },
+                                                                {
+                                                                    "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                                                    "apiType":  "SeamlessWallet",
+                                                                    "scope":  "All",
+                                                                    "expirationDate":  "2026-06-17T00:00:00.000"
+                                                                },
+                                                                {
+                                                                    "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+                                                                    "apiType":  "Operation",
+                                                                    "scope":  "All",
+                                                                    "expirationDate":  "2026-06-22T00:00:00.000"
+                                                                }
+                                                            ],
+                                                 "error":  {
+                                                               "id":  0,
+                                                               "msg":  "No Error"
+                                                           }
+                                             }
+                            }
+}

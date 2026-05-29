@@ -1,0 +1,165 @@
+﻿{
+    "generatedAt":  "2026-05-23T20:30:50.5253694+05:30",
+    "window":  {
+                   "startDate":  "2026-05-23T14:30:00Z",
+                   "endDate":  "2026-05-23T15:30:00Z"
+               },
+    "summary":  [
+                    {
+                        "api":  "5.4",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "SportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "SportsBook",
+                        "username":  "baje247pl01",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "SportsBook",
+                        "username":  "50601yy_baje247pl01",
+                        "count":  0,
+                        "errorId":  4104,
+                        "errorMsg":  "Incorrect Downline Or User Not Exists"
+                    },
+                    {
+                        "api":  "5.4",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "568WinSportsbook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "568WinSportsbook",
+                        "username":  "baje247pl01",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "568WinSportsbook",
+                        "username":  "50601yy_baje247pl01",
+                        "count":  0,
+                        "errorId":  4104,
+                        "errorMsg":  "Incorrect Downline Or User Not Exists"
+                    },
+                    {
+                        "api":  "5.4",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "username":  "baje247pl01",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "username":  "50601yy_baje247pl01",
+                        "count":  0,
+                        "errorId":  4104,
+                        "errorMsg":  "Incorrect Downline Or User Not Exists"
+                    },
+                    {
+                        "api":  "5.4",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "SportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "SportsBook",
+                        "username":  "baje247pl01",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "SportsBook",
+                        "username":  "50601yy_baje247pl01",
+                        "count":  0,
+                        "errorId":  4104,
+                        "errorMsg":  "Incorrect Downline Or User Not Exists"
+                    },
+                    {
+                        "api":  "5.4",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "568WinSportsbook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "568WinSportsbook",
+                        "username":  "baje247pl01",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "568WinSportsbook",
+                        "username":  "50601yy_baje247pl01",
+                        "count":  0,
+                        "errorId":  4104,
+                        "errorMsg":  "Incorrect Downline Or User Not Exists"
+                    },
+                    {
+                        "api":  "5.4",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "username":  "baje247pl01",
+                        "count":  0,
+                        "errorId":  0,
+                        "errorMsg":  "No Error"
+                    },
+                    {
+                        "api":  "5.5",
+                        "key":  "CB768EF40A78496AAB6815E1C92A548D",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "username":  "50601yy_baje247pl01",
+                        "count":  0,
+                        "errorId":  4104,
+                        "errorMsg":  "Incorrect Downline Or User Not Exists"
+                    }
+                ]
+}

@@ -1,0 +1,41 @@
+﻿{
+    "generatedAt":  "2026-05-26T23:23:03.8061093+05:30",
+    "sourceFile":  "workspace/TCP-106998_demo_report_check_now.json",
+    "username":  "baje247pl01",
+    "window":  {
+                   "startDate":  "2026-05-26T11:51:10Z",
+                   "endDate":  "2026-05-26T17:51:10Z"
+               },
+    "present":  [
+                    {
+                        "portfolio":  "Casino",
+                        "count":  2
+                    },
+                    {
+                        "portfolio":  "SeamlessGame",
+                        "count":  25
+                    },
+                    {
+                        "portfolio":  "ThirdPartySportsBook",
+                        "count":  2
+                    }
+                ],
+    "missing":  [
+                    {
+                        "portfolio":  "568WinSportsbook",
+                        "count":  0
+                    },
+                    {
+                        "portfolio":  "Games",
+                        "count":  0
+                    },
+                    {
+                        "portfolio":  "SportsBook",
+                        "count":  0
+                    },
+                    {
+                        "portfolio":  "VirtualSports",
+                        "count":  0
+                    }
+                ]
+}

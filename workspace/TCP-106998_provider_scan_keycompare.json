@@ -1,0 +1,105 @@
+﻿{
+    "generatedAt":  "2026-05-23T21:18:39.8257895+05:30",
+    "window":  {
+                   "start":  "2026-05-23T00:00:00-04:00",
+                   "end":  "2026-05-24T00:00:00-04:00"
+               },
+    "rows":  [
+                 {
+                     "key":  "799DCB01",
+                     "portfolio":  "SportsBook",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "799DCB01",
+                     "portfolio":  "568WinSportsbook",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "799DCB01",
+                     "portfolio":  "ThirdPartySportsBook",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "799DCB01",
+                     "portfolio":  "SeamlessGame",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "799DCB01",
+                     "portfolio":  "Games",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "799DCB01",
+                     "portfolio":  "Casino",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "CB768EF4",
+                     "portfolio":  "SportsBook",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "CB768EF4",
+                     "portfolio":  "568WinSportsbook",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "CB768EF4",
+                     "portfolio":  "ThirdPartySportsBook",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "CB768EF4",
+                     "portfolio":  "SeamlessGame",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "CB768EF4",
+                     "portfolio":  "Games",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 },
+                 {
+                     "key":  "CB768EF4",
+                     "portfolio":  "Casino",
+                     "count":  0,
+                     "errorId":  0,
+                     "errorMsg":  "No Error",
+                     "sampleRef":  null
+                 }
+             ]
+}

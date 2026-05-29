@@ -5,7 +5,6 @@ import { userApi, type UserTransaction } from "@/services/userApi";
 
 const BKASH_LOGO = "https://files.v1.distcdn.net/v1/objects/513306c6-1563-46db-aab5-5e4e5bb4563a";
 const NAGAD_LOGO = "https://files.v1.distcdn.net/v1/objects/6ebd6ca3-2592-405a-8f89-198bb44ea372";
-const UPAY_LOGO = "https://files.v1.distcdn.net/v1/objects/87a930bd-c0ca-4c7e-a08c-d6122d51cf55";
 
 type TxType = "deposit" | "withdrawal";
 
@@ -54,7 +53,7 @@ export const TransactionHistoryModal = () => {
         const amount = Number(tx.amount || 0);
         const code = String(tx.payment_method || "wallet").toLowerCase();
         const provider = code.toUpperCase();
-        const logo = code === "nagad" ? NAGAD_LOGO : code === "upay" ? UPAY_LOGO : BKASH_LOGO;
+        const logo = code === "nagad" ? NAGAD_LOGO : BKASH_LOGO;
         const statusLabel = tx.status === "completed" ? "Successful" : tx.status === "pending" ? "Pending" : "Canceled";
         return {
           id: String(tx.id),

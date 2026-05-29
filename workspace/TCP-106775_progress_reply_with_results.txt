@@ -1,0 +1,37 @@
+Hello team,
+
+Thank you. We have started TCP-106775 execution in staging and completed the following API checks:
+
+Completed:
+1) API 3.2.1 New Login
+- Endpoint: /web-root/restricted/player/v2/login.aspx
+- Result: success (error id 0), login URL returned for player baje247pl01.
+
+2) API 7.3 Regenerate Company Key
+- Endpoint: /web-root/restricted/system/regenerate-key
+- Result: success (error id 0)
+- New Operation key generated: CB768EF40A78496AAB6815E1C92A548D
+
+3) API 7.4 Get Current Company Key
+- Endpoint: /web-root/restricted/system/get-current-key-info
+- Result: success (error id 0), valid current key list returned.
+
+4) API 5.4 / 5.6 / 5.10 and API 7.2 connectivity
+- Endpoints are integrated and reachable.
+- Current response for tested window/test reference: id 6666 (No Bet Found), which indicates no valid real bet refNo/txnId in the tested dataset yet.
+
+In progress:
+- Place a real sportsbook bet from login session and then re-run:
+  - 5.4 Get Bet List By Modify Date (Without Username)
+  - 5.6 Get Bet List By RefNos
+  - 5.10 Get Bet Payload
+  - 7.2 Resend Order (with valid settled/canceled txnId)
+- Back Office verification screenshots:
+  - player search result
+  - 16.1 Running Bets
+  - 4.1 Win/Loss
+  - 3.4 Company Key activation
+
+We will submit the full completion package with logs and screenshots once the live-bet verification cycle is finished.
+
+Thank you.

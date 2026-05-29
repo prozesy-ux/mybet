@@ -1,0 +1,81 @@
+﻿{
+    "ticket":  "TCP-107370",
+    "generatedAt":  "2026-05-28T20:16:29.9303883+05:30",
+    "endpoint":  "https://ex-api-demo-yy.568win.com",
+    "username":  "baje247pl01",
+    "serverId":  "GPZES01",
+    "status":  "usd_detected",
+    "results":  [
+                    {
+                        "name":  "SportsBook",
+                        "portfolio":  "SportsBook",
+                        "gpId":  0,
+                        "ok":  true,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "currencyName":  null,
+                        "url":  "//sportsbook-auth-demo.ggppqqgg.com/welcome2.aspx?token=37751065.JVcraVsHRZypExNkxrhtYdm.821\u0026isAppDownload=true\u0026lang=EN\u0026device=d\u0026recommendmatchid=0",
+                        "request":  {
+                                        "CompanyKey":  "[REDACTED]",
+                                        "ServerId":  "GPZES01",
+                                        "Username":  "baje247pl01",
+                                        "Portfolio":  "SportsBook",
+                                        "Lang":  "EN",
+                                        "Device":  "d",
+                                        "ProductId":  0,
+                                        "RecommendMatchId":  0,
+                                        "GpId":  0,
+                                        "IsWapSports":  false
+                                    }
+                    },
+                    {
+                        "name":  "568WinSportsbook",
+                        "portfolio":  "568WinSportsbook",
+                        "gpId":  0,
+                        "ok":  true,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "currencyName":  null,
+                        "url":  "//sports-568-demo.ggppqqgg.com/welcomeSports568.aspx?token=37751066.tuYDFevoTdxBrJZjJuaoutO.821\u0026lang=EN\u0026device=d",
+                        "request":  {
+                                        "CompanyKey":  "[REDACTED]",
+                                        "ServerId":  "GPZES01",
+                                        "Username":  "baje247pl01",
+                                        "Portfolio":  "568WinSportsbook",
+                                        "Lang":  "EN",
+                                        "Device":  "d",
+                                        "ProductId":  0,
+                                        "RecommendMatchId":  0,
+                                        "GpId":  0,
+                                        "IsWapSports":  false
+                                    }
+                    },
+                    {
+                        "name":  "ThirdPartySportsBook_AFB",
+                        "portfolio":  "ThirdPartySportsBook",
+                        "gpId":  1015,
+                        "ok":  true,
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "currencyName":  "USD",
+                        "url":  "https://api.afb166.com/Public/Validate.aspx?sk=W0\u0026us=50601sbons1643528\u0026k=47abd309e83f4a6abeb42292a71858f2\u0026device=d\u0026oddsmode=\u0026lang=EN-US\u0026currencyName=USD\u0026IsHideChipSet=0\u0026print_txt=AFBSPORT\u0026ismmy=0",
+                        "request":  {
+                                        "CompanyKey":  "[REDACTED]",
+                                        "ServerId":  "GPZES01",
+                                        "Username":  "baje247pl01",
+                                        "Portfolio":  "ThirdPartySportsBook",
+                                        "Lang":  "EN",
+                                        "Device":  "d",
+                                        "ProductId":  0,
+                                        "RecommendMatchId":  0,
+                                        "GpId":  1015,
+                                        "IsWapSports":  false
+                                    }
+                    }
+                ],
+    "guidance":  [
+                     "If currencyName is USD/non-BDT, this is not a callback code bug. The player or parent agent currency in 568Win is not BDT.",
+                     "Create or use a BDT agent in Production (API 2.1 Register Agent with Currency=BDT, or BO create agent with BDT).",
+                     "Create a new test player under that BDT agent, then rerun this script against the Prod endpoint."
+                 ]
+}

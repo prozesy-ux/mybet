@@ -1,0 +1,23 @@
+﻿{
+    "generatedAt":  "2026-05-23T20:37:52.3484007+05:30",
+    "request":  {
+                    "companyKey":  "CB768EF40A78496AAB6815E1C92A548D",
+                    "portfolio":  "SportsBook",
+                    "txnId":  "4937968",
+                    "serverId":  "GPZES01"
+                },
+    "response":  {
+                     "resendDetail":  [
+                                          {
+                                              "userName":  "baje247pl01",
+                                              "transferCode":  "4937968",
+                                              "action":  "CANCEL"
+                                          }
+                                      ],
+                     "serverId":  "YY-demoanduat",
+                     "error":  {
+                                   "id":  0,
+                                   "msg":  "No Error"
+                               }
+                 }
+}

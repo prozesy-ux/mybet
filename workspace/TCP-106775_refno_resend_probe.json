@@ -1,0 +1,63 @@
+﻿{
+    "generatedAt":  "2026-05-23T19:34:39.2008026+05:30",
+    "try56":  {
+                  "ok":  true,
+                  "path":  "/web-root/restricted/report/get-bet-list-by-refnos.aspx",
+                  "request":  {
+                                  "serverId":  "GPZES01",
+                                  "portfolio":  "VirtualSports",
+                                  "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                  "language":  "en",
+                                  "refNos":  "V2671814"
+                              },
+                  "response":  {
+                                   "result":  [
+
+                                              ],
+                                   "serverId":  "YY-demoanduat",
+                                   "error":  {
+                                                 "id":  6666,
+                                                 "msg":  "No Bet Found"
+                                             }
+                               }
+              },
+    "try510":  {
+                   "ok":  true,
+                   "path":  "/web-root/restricted/report/get-bet-payload.aspx",
+                   "request":  {
+                                   "Language":  "en",
+                                   "Refno":  "V2671814",
+                                   "Portfolio":  "VirtualSports",
+                                   "CompanyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                   "ServerId":  "GPZES01"
+                               },
+                   "response":  {
+                                    "url":  "",
+                                    "serverId":  "YY-demoanduat",
+                                    "error":  {
+                                                  "id":  6666,
+                                                  "msg":  "No Bet Found"
+                                              }
+                                }
+               },
+    "try72":  {
+                  "ok":  true,
+                  "path":  "/web-root/restricted/seamless-wallet/resend-order",
+                  "request":  {
+                                  "companyKey":  "799DCB01CFB9489CB2DF42D9B0743F59",
+                                  "portfolio":  "VirtualSports",
+                                  "txnId":  "V2671814",
+                                  "serverId":  "GPZES01"
+                              },
+                  "response":  {
+                                   "resendDetail":  [
+
+                                                    ],
+                                   "serverId":  "YY-demoanduat",
+                                   "error":  {
+                                                 "id":  6666,
+                                                 "msg":  "No Bet Found"
+                                             }
+                               }
+              }
+}

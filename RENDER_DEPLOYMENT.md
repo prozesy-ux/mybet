@@ -70,7 +70,7 @@ CORS_ORIGIN=https://mybet-frontend.render.com,https://gpzes.com
 
 **Frontend Variables:**
 ```
-VITE_API_BASE_URL=https://mybet-backend.onrender.com
+VITE_API_BASE_URL=https://mybet-backend-xypv.onrender.com
 VITE_PUBLIC_SITE_URL=https://mybet-frontend.render.com
 ```
 
@@ -91,7 +91,7 @@ The Supabase database connection string should be in `DATABASE_URL` environment 
 
 ## URLs After Deployment
 
-- Backend: https://mybet-backend.onrender.com
+- Backend: https://mybet-backend-xypv.onrender.com
 - Frontend: https://mybet-frontend.render.com
 - Both auto-update on every GitHub push
 

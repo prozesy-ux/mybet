@@ -1,0 +1,19 @@
+Hello team,
+
+Quick update on TCP-106775.
+
+Our side callback issue is now resolved:
+- https://api.gpzes.com/GetBalance/ is healthy again.
+- GetBalance returns success (ErrorCode 0) for player baje247pl01 with active keys.
+
+Current blocker appears on sportsbook side:
+- In sportsbook session, balance polling request fails with connection error:
+  POST https://sportsbook-betting.ggppqqgg.com/api/Account/balance?u=50601yy_baje247pl01
+- Browser error observed: net::ERR_CONNECTION_CLOSED
+- UI then shows API Error [UNKNOWN] / Network Error.
+
+Because of this upstream connection issue, we cannot complete the live bet placement cycle and final 5.4/5.6/5.10 + 7.2 proof yet.
+
+Please help check sportsbook-betting.ggppqqgg.com connectivity/routing for this staging environment.
+
+Thank you.

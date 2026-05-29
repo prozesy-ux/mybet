@@ -1,1 +1,5 @@
-﻿Missing: seamless-test-result.html and seamless-test-pass.png
+﻿No missing artifacts.
+
+Verified present:
+- workspace/seamless-test-result.html
+- workspace/seamless-test-pass.png

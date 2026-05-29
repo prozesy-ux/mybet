@@ -1,0 +1,30 @@
+﻿{
+    "generatedAt":  "2026-05-26T23:24:32.8496582+05:30",
+    "username":  "baje247pl01",
+    "results":  [
+                    {
+                        "portfolio":  "SportsBook",
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "//sportsbook-auth-demo.ggppqqgg.com/welcome2.aspx?token=37737915.eYYYBNSgoYHzZHSLYxqgKMok.821\u0026isAppDownload=true\u0026lang=EN\u0026device=d"
+                    },
+                    {
+                        "portfolio":  "568WinSportsbook",
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "//sports-568-demo.ggppqqgg.com/welcomeSports568.aspx?token=37737916.jSTqcRqEJTjEaOkBBpjeexu.821\u0026lang=EN\u0026device=d"
+                    },
+                    {
+                        "portfolio":  "Games",
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "//rng-demo.ggppqqgg.com/web-root/public/?token=37737917.SfCIsRtLCerCveJozIzNRbjd\u0026gameid=1"
+                    },
+                    {
+                        "portfolio":  "VirtualSports",
+                        "errorId":  0,
+                        "errorMsg":  "No Error",
+                        "url":  "//virtualsports-demo.ggppqqgg.com/Home/Welcome?gmOnlineId=3458478272\u0026token=37737918.NRrxCLnsAMwAmUXHVFCVSXs\u0026lang=EN"
+                    }
+                ]
+}

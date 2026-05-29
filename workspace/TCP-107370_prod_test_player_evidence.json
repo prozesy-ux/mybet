@@ -1,0 +1,17 @@
+{
+    "timestamp":  "2026-05-29T18:59:46",
+    "base":  "http://ex-api-yy2.ttbbyyllyy.com",
+    "agent":  "bajag_0529185934",
+    "player":  "bajpl_0529185934",
+    "balanceCheck":  {
+                         "username":  "bajpl_0529185934",
+                         "currency":  "BDT",
+                         "balance":  500.0,
+                         "outstanding":  0.0,
+                         "serverId":  "YY-production",
+                         "error":  {
+                                       "id":  0,
+                                       "msg":  "No Error"
+                                   }
+                     }
+}
