@@ -84,10 +84,122 @@ const seamlessCompanyKeys = Array.from(
 );
 const seamlessStateByTransfer = new Map();
 const seamlessTransferByTxn = new Map();
+const SEAMLESS_BETS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS seamless_bets (
+    transfer_key TEXT PRIMARY KEY,
+    bet_payload JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+const SEAMLESS_TXN_INDEX_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS seamless_tx_index (
+    txn_key TEXT PRIMARY KEY,
+    transfer_key TEXT NOT NULL REFERENCES seamless_bets(transfer_key) ON DELETE CASCADE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`;
 const tkpayCallbackWhitelist = String(process.env.TKPAY_CALLBACK_IP_WHITELIST || '')
   .split(',')
   .map((value) => String(value || '').trim())
   .filter(Boolean);
+
+const runDbQuery = (client, text, params = []) => (client ? client.query(text, params) : query(text, params));
+
+const hydrateTxnIndexFromBet = (transferKey, bet) => {
+  if (!bet || !bet.scope || !bet.txs || typeof bet.txs !== 'object') {
+    return;
+  }
+
+  const transferCode = String(bet.transfer_code || '').trim();
+  if (!transferCode) {
+    return;
+  }
+
+  Object.keys(bet.txs).forEach((txnId) => {
+    const txnKey = [
+      String(bet.scope.username || ''),
+      String(bet.scope.productType || ''),
+      String(bet.scope.gameType || ''),
+      String(bet.scope.gpid || ''),
+      transferCode,
+      String(txnId || ''),
+    ].join('|');
+    seamlessTransferByTxn.set(txnKey, transferKey);
+  });
+};
+
+const loadSeamlessBet = async (transferKey, client = null) => {
+  const cached = seamlessStateByTransfer.get(transferKey);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await runDbQuery(
+    client,
+    `SELECT bet_payload
+       FROM seamless_bets
+      WHERE transfer_key = $1
+      LIMIT 1`,
+    [transferKey]
+  );
+
+  const payload = result.rows[0]?.bet_payload;
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  seamlessStateByTransfer.set(transferKey, payload);
+  hydrateTxnIndexFromBet(transferKey, payload);
+  return payload;
+};
+
+const loadTransferKeyByTxn = async (txnKey, client = null) => {
+  const cached = seamlessTransferByTxn.get(txnKey);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await runDbQuery(
+    client,
+    `SELECT transfer_key
+       FROM seamless_tx_index
+      WHERE txn_key = $1
+      LIMIT 1`,
+    [txnKey]
+  );
+
+  const transferKey = result.rows[0]?.transfer_key;
+  if (!transferKey) {
+    return null;
+  }
+
+  seamlessTransferByTxn.set(txnKey, transferKey);
+  return transferKey;
+};
+
+const persistSeamlessBet = async (client, transferKey, bet) => {
+  await runDbQuery(
+    client,
+    `INSERT INTO seamless_bets (transfer_key, bet_payload, updated_at)
+     VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
+     ON CONFLICT (transfer_key)
+     DO UPDATE SET bet_payload = EXCLUDED.bet_payload,
+                   updated_at = CURRENT_TIMESTAMP`,
+    [transferKey, JSON.stringify(bet)]
+  );
+};
+
+const persistSeamlessTxnIndex = async (client, txnKey, transferKey) => {
+  await runDbQuery(
+    client,
+    `INSERT INTO seamless_tx_index (txn_key, transfer_key, updated_at)
+     VALUES ($1, $2, CURRENT_TIMESTAMP)
+     ON CONFLICT (txn_key)
+     DO UPDATE SET transfer_key = EXCLUDED.transfer_key,
+                   updated_at = CURRENT_TIMESTAMP`,
+    [txnKey, transferKey]
+  );
+};
 
 const getRequestIp = (req) => {
   const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
@@ -684,13 +796,13 @@ const supportsUpgradeableDuplicateDeduct = (payload) => {
   return productType === 3 || productType === 7;
 };
 
-const getBetByPayload = (payload) => {
+const getBetByPayload = async (payload, client = null) => {
   const transferCode = findTransferCode(payload);
   const transactionId = findTransactionId(payload);
 
   if (transferCode) {
     const transferKey = buildTransferKey(payload, transferCode);
-    const bet = seamlessStateByTransfer.get(transferKey);
+    const bet = await loadSeamlessBet(transferKey, client);
     if (bet) {
       return { transferCode, transactionId, transferKey, bet };
     }
@@ -698,9 +810,9 @@ const getBetByPayload = (payload) => {
 
   if (transferCode && transactionId) {
     const txnKey = buildTxnKey(payload, transferCode, transactionId);
-    const linkedTransferKey = seamlessTransferByTxn.get(txnKey);
+    const linkedTransferKey = await loadTransferKeyByTxn(txnKey, client);
     if (linkedTransferKey) {
-      const bet = seamlessStateByTransfer.get(linkedTransferKey);
+      const bet = await loadSeamlessBet(linkedTransferKey, client);
       if (bet) {
         return { transferCode: bet.transfer_code, transactionId, transferKey: linkedTransferKey, bet };
       }
@@ -737,11 +849,15 @@ const createSeamlessBet = ({ user, payload, transferCode, transactionId, amount,
   };
 };
 
-const saveSeamlessBet = (transferKey, bet, payload, transferCode, transactionId) => {
+const saveSeamlessBet = async (client, transferKey, bet, payload, transferCode, transactionId) => {
   seamlessStateByTransfer.set(transferKey, bet);
+  await persistSeamlessBet(client, transferKey, bet);
+
+  hydrateTxnIndexFromBet(transferKey, bet);
   if (transferCode && transactionId) {
     const txnKey = buildTxnKey(payload, transferCode, transactionId);
     seamlessTransferByTxn.set(txnKey, transferKey);
+    await persistSeamlessTxnIndex(client, txnKey, transferKey);
   }
 };
 
@@ -957,6 +1073,8 @@ const initializeAdminSchema = async () => {
   await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL`);
   await query(`ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS image_url TEXT`);
   await query(`ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS account_number VARCHAR(64)`);
+  await query(SEAMLESS_BETS_TABLE_SQL);
+  await query(SEAMLESS_TXN_INDEX_TABLE_SQL);
 
   await query(`
     CREATE TABLE IF NOT EXISTS user_profile_changes (
@@ -3942,12 +4060,12 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
 
     const transferKey = buildTransferKey(req.body, transferCode);
     const txnKey = buildTxnKey(req.body, transferCode, transactionId);
-    const existingBet = seamlessStateByTransfer.get(transferKey);
+    const existingBet = await loadSeamlessBet(transferKey, client);
     const currentBalance = Number(user.balance || 0);
 
-    if (seamlessTransferByTxn.has(txnKey)) {
-      const existingKey = seamlessTransferByTxn.get(txnKey);
-      const existing = seamlessStateByTransfer.get(existingKey);
+    const existingKeyForTxn = await loadTransferKeyByTxn(txnKey, client);
+    if (existingKeyForTxn) {
+      const existing = await loadSeamlessBet(existingKeyForTxn, client);
       const existingTx = existing?.txs?.[String(transactionId)];
 
       if (
@@ -3992,7 +4110,7 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
           },
         };
 
-        saveSeamlessBet(existingKey, upgradedBet, req.body, transferCode, transactionId);
+        await saveSeamlessBet(client, existingKeyForTxn, upgradedBet, req.body, transferCode, transactionId);
         await client.query('COMMIT');
         return res.json(seamlessResponse({ AccountName: user.username, BetAmount: amount.toFixed(1), Balance: nextBalance }));
       }
@@ -4048,7 +4166,7 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
           },
         },
       };
-      saveSeamlessBet(transferKey, updatedBet, req.body, transferCode, transactionId);
+      await saveSeamlessBet(client, transferKey, updatedBet, req.body, transferCode, transactionId);
     } else {
       const bet = createSeamlessBet({
         user,
@@ -4058,7 +4176,7 @@ app.post(['/Deduct', '/deduct'], async (req, res) => {
         amount,
         balanceAfter: nextBalance,
       });
-      saveSeamlessBet(transferKey, bet, req.body, transferCode, transactionId);
+      await saveSeamlessBet(client, transferKey, bet, req.body, transferCode, transactionId);
     }
 
     await client.query('COMMIT');
@@ -4104,7 +4222,7 @@ app.post(['/Settle', '/settle'], async (req, res) => {
 
     const user = userResult.rows[0];
     const transferKey = buildTransferKey(req.body, transferCode);
-    const existing = seamlessStateByTransfer.get(transferKey);
+    const existing = await loadSeamlessBet(transferKey, client);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
@@ -4136,6 +4254,13 @@ app.post(['/Settle', '/settle'], async (req, res) => {
       settled_win_loss: Number(winLoss.toFixed(5)),
       settled_count: Number(existing.settled_count || 0) + 1,
       last_action: 'settle',
+      rollback_snapshot: {
+        source_action: 'settle',
+        status: existing.status,
+        current_stake: Number(existing.current_stake || 0),
+        settled_win_loss: Number(existing.settled_win_loss || 0),
+        txs: existing.txs || {},
+      },
       txs: Object.fromEntries(
         Object.entries(existing.txs || {}).map(([id, tx]) => [
           id,
@@ -4146,7 +4271,7 @@ app.post(['/Settle', '/settle'], async (req, res) => {
         ])
       ),
     };
-    seamlessStateByTransfer.set(transferKey, updated);
+    await saveSeamlessBet(client, transferKey, updated, req.body, transferCode, existing.primary_transaction_id || findTransactionId(req.body));
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
@@ -4191,7 +4316,7 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
 
     const user = userResult.rows[0];
     const transferKey = buildTransferKey(req.body, transferCode);
-    const existing = seamlessStateByTransfer.get(transferKey);
+    const existing = await loadSeamlessBet(transferKey, client);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
@@ -4205,15 +4330,17 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
     const currentBalance = Number(user.balance || 0);
     let netChange = 0;
     let resolvedCancelTxnId = transactionId;
-    let cancelByTransferFallback = false;
+    let canceledTxIds = [];
+    const previousTxs = existing.txs || {};
+    const previousStatus = String(existing.status || 'running');
+    const previousStake = Number(existing.current_stake || 0);
+    const previousSettledWinLoss = Number(existing.settled_win_loss || 0);
 
     if (!isCancelAll && transactionId && existing.status === 'running') {
       const tx = existing.txs?.[String(transactionId)];
       if (!tx) {
-        // Some providers send a new cancel transaction id while still targeting the same transfer.
-        // Fall back to transfer-level cancel on active stake instead of hard-failing reference lookup.
-        cancelByTransferFallback = true;
-        netChange = Number(existing.current_stake || 0);
+        await client.query('ROLLBACK');
+        return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
       }
       if (tx && tx.status === 'void') {
         await client.query('ROLLBACK');
@@ -4222,11 +4349,15 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
       if (tx) {
         netChange = Number(tx.amount || 0);
         resolvedCancelTxnId = String(transactionId);
+        canceledTxIds = [resolvedCancelTxnId];
       }
     } else {
       const stake = Number(existing.current_stake || 0);
       const settledAmount = Number(existing.settled_win_loss || 0);
       netChange = existing.status === 'settled' ? stake - settledAmount : stake;
+      canceledTxIds = Object.entries(existing.txs || {})
+        .filter(([, tx]) => String(tx?.status || '') !== 'void')
+        .map(([id]) => id);
     }
 
     const nextBalance = Number((currentBalance + netChange).toFixed(5));
@@ -4238,7 +4369,7 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
     );
 
     const nextTxs = { ...(existing.txs || {}) };
-    if (!isCancelAll && resolvedCancelTxnId && nextTxs[String(resolvedCancelTxnId)] && !cancelByTransferFallback) {
+    if (!isCancelAll && resolvedCancelTxnId && nextTxs[String(resolvedCancelTxnId)]) {
       nextTxs[String(resolvedCancelTxnId)] = {
         ...nextTxs[String(resolvedCancelTxnId)],
         status: 'void',
@@ -4256,7 +4387,7 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
       .filter((tx) => tx.status === 'running')
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
-    seamlessStateByTransfer.set(transferKey, {
+    await saveSeamlessBet(client, transferKey, {
       ...existing,
       status: runningStake > 0 ? 'running' : 'void',
       current_stake: Number(runningStake.toFixed(5)),
@@ -4264,9 +4395,17 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
       last_cancel_all: Boolean(isCancelAll),
       last_cancel_refund: Number(netChange.toFixed(5)),
       last_action: 'cancel',
+      rollback_snapshot: {
+        source_action: 'cancel',
+        status: previousStatus,
+        current_stake: previousStake,
+        settled_win_loss: previousSettledWinLoss,
+        txs: previousTxs,
+        canceled_tx_ids: canceledTxIds,
+      },
       balance_after: nextBalance,
       txs: nextTxs,
-    });
+    }, req.body, transferCode, existing.primary_transaction_id || transactionId);
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
@@ -4309,7 +4448,7 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
 
     const user = userResult.rows[0];
     const transferKey = buildTransferKey(req.body, transferCode);
-    const existing = seamlessStateByTransfer.get(transferKey);
+    const existing = await loadSeamlessBet(transferKey, client);
     if (!existing) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
@@ -4322,16 +4461,15 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
 
     const currentBalance = Number(user.balance || 0);
     const stake = Number(existing.current_stake || 0);
-    const totalStake = Number(existing.stake_total || 0);
     const winLoss = Number(existing.settled_win_loss || 0);
     let nextBalance = currentBalance;
     let metadata = { action: 'seamless_rollback', win_loss: winLoss };
+    const snapshot = existing.rollback_snapshot || null;
 
     if (existing.status === 'settled') {
       nextBalance = Number((currentBalance - winLoss).toFixed(5));
     } else if (existing.status === 'void' && existing.last_action === 'cancel') {
-      // Reopen a canceled bet by reversing the prior cancel refund.
-      const reopenStake = totalStake > 0 ? totalStake : Math.max(0, Number(existing.last_cancel_refund || 0));
+      const reopenStake = Math.max(0, Number(existing.last_cancel_refund || 0));
       nextBalance = Number((currentBalance - reopenStake).toFixed(5));
       metadata = { action: 'seamless_rollback_cancel_reopen', stake: reopenStake };
     } else {
@@ -4346,24 +4484,17 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
       [user.id, Math.abs(currentBalance - nextBalance), `SW-${transferCode}-ROLLBACK`, JSON.stringify({ ...metadata, transfer_code: transferCode })]
     );
 
-    seamlessStateByTransfer.set(transferKey, {
+    await saveSeamlessBet(client, transferKey, {
       ...existing,
-      status: 'running',
-      current_stake: Number((existing.status === 'void' && existing.last_action === 'cancel' ? (totalStake > 0 ? totalStake : Math.max(0, Number(existing.last_cancel_refund || 0))) : stake).toFixed(5)),
-      settled_win_loss: 0,
+      status: snapshot?.status || 'running',
+      current_stake: Number((snapshot?.current_stake ?? stake).toFixed(5)),
+      settled_win_loss: Number((snapshot?.settled_win_loss ?? 0).toFixed(5)),
       rollback_count: Number(existing.rollback_count || 0) + 1,
       last_action: 'rollback',
       balance_after: nextBalance,
-      txs: Object.fromEntries(
-        Object.entries(existing.txs || {}).map(([id, tx]) => [
-          id,
-          {
-            ...tx,
-            status: 'running',
-          },
-        ])
-      ),
-    });
+      rollback_snapshot: null,
+      txs: snapshot?.txs || existing.txs || {},
+    }, req.body, transferCode, existing.primary_transaction_id || findTransactionId(req.body));
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
@@ -4408,10 +4539,10 @@ app.post(['/Bonus', '/bonus'], async (req, res) => {
 
     const user = userResult.rows[0];
     const transferKey = buildTransferKey(req.body, transferCode);
-    if (seamlessStateByTransfer.has(transferKey)) {
+    const existingByTransfer = await loadSeamlessBet(transferKey, client);
+    if (existingByTransfer) {
       await client.query('ROLLBACK');
-      const existing = seamlessStateByTransfer.get(transferKey);
-      return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
+      return res.json(seamlessResponse({ AccountName: user.username, Balance: existingByTransfer.balance_after, ErrorCode: 5003, ErrorMessage: 'Duplicate transaction' }));
     }
 
     const currentBalance = Number(user.balance || 0);
@@ -4442,7 +4573,7 @@ app.post(['/Bonus', '/bonus'], async (req, res) => {
       settled_win_loss: amount,
       return_stake_history: {},
     };
-    saveSeamlessBet(transferKey, bet, req.body, transferCode, transactionId);
+    await saveSeamlessBet(client, transferKey, bet, req.body, transferCode, transactionId);
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
@@ -4468,7 +4599,7 @@ app.post(['/GetBetStatus', '/getbetstatus'], async (req, res) => {
 
     const transferCode = findTransferCode(req.body);
     const transactionId = findTransactionId(req.body);
-    const located = getBetByPayload(req.body);
+    const located = await getBetByPayload(req.body);
     const existing = located.bet;
     if (!existing) {
       return res.json({
@@ -4543,7 +4674,7 @@ app.post(['/ReturnStake', '/returnstake'], async (req, res) => {
 
     const user = userResult.rows[0];
     const transferKey = buildTransferKey(req.body, transferCode);
-    const bet = seamlessStateByTransfer.get(transferKey);
+    const bet = await loadSeamlessBet(transferKey, client);
     if (!bet) {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: user.balance, ErrorCode: 6, ErrorMessage: 'Reference not found' }));
@@ -4584,7 +4715,7 @@ app.post(['/ReturnStake', '/returnstake'], async (req, res) => {
       );
     }
 
-    seamlessStateByTransfer.set(transferKey, {
+    await saveSeamlessBet(client, transferKey, {
       ...bet,
       current_stake: Number(currentStake.toFixed(5)),
       balance_after: nextBalance,
@@ -4593,7 +4724,7 @@ app.post(['/ReturnStake', '/returnstake'], async (req, res) => {
         ...(bet.return_stake_history || {}),
         [requestKey]: true,
       },
-    });
+    }, req.body, transferCode, transactionId);
 
     await client.query('COMMIT');
     return res.json(seamlessResponse({ AccountName: user.username, Balance: nextBalance }));
