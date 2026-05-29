@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useModal } from "@/context/ModalContext";
 import { userApi } from "@/services/userApi";
 import { useAuth } from "@/context/AuthContext";
+import { consumePendingCasinoGame, requestCasinoLaunch } from "@/services/casinoLaunchFlow";
 
 const QUICK_AMOUNTS = ["৳500", "৳1,000", "৳2,000", "৳5,000"];
 
@@ -61,6 +62,13 @@ export const DepositProviderModal = () => {
       }
 
       await refreshUser();
+      const pendingGame = consumePendingCasinoGame();
+      if (pendingGame) {
+        closeModal();
+        requestCasinoLaunch(pendingGame);
+        return;
+      }
+
       setInfo(response.message || "Deposit request submitted for admin approval.");
       setAmount(String(minAmount));
     } catch (submitError) {

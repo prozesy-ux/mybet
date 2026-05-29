@@ -141,7 +141,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userTokenStore.set(response.token);
       setUser(response.user);
       saveSession(response.user);
-      return { ok: true, message: response.message || "Login successful" };
+      return { ok: true, message: response.message || "Login successful", user: response.user };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Login failed" };
     }
@@ -153,7 +153,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userTokenStore.set(response.token);
       setUser(response.user);
       saveSession(response.user);
-      return { ok: true, message: response.message || "Registration successful" };
+      return { ok: true, message: response.message || "Registration successful", user: response.user };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Registration failed" };
     }

@@ -16,6 +16,7 @@ export interface AuthUser {
 export interface AuthResult {
   ok: boolean;
   message: string;
+  user?: AuthUser;
 }
 
 export interface PaymentMethod {

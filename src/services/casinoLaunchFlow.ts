@@ -31,6 +31,18 @@ export const clearPendingCasinoGame = () => {
   sessionStorage.removeItem(PENDING_CASINO_GAME_KEY);
 };
 
+export const hasPendingCasinoGame = () => readPendingCasinoGame() !== null;
+
+export const consumePendingCasinoGame = (): PendingCasinoGame | null => {
+  const pending = readPendingCasinoGame();
+  if (!pending) {
+    return null;
+  }
+
+  clearPendingCasinoGame();
+  return pending;
+};
+
 export const requestLoginModal = () => {
   window.dispatchEvent(new CustomEvent(AUTH_OPEN_LOGIN_EVENT));
 };
