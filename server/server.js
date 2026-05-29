@@ -765,12 +765,16 @@ const findNumeric = (payload, ...keys) => {
   return Number.isFinite(value) ? value : 0;
 };
 
-const getScopeParts = (payload) => ({
-  username: normalizeSeamlessUsername(getBodyValue(payload, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName')).canonical.toLowerCase(),
-  productType: String(getBodyValue(payload, 'ProductType') || ''),
-  gameType: String(getBodyValue(payload, 'GameType') || ''),
-  gpid: String(getBodyValue(payload, 'Gpid') || ''),
-});
+const getScopeParts = (payload) => {
+  const normalized = normalizeSeamlessUsername(getBodyValue(payload, 'Username', 'UserName', 'AccountName', 'Member', 'PlayerName'));
+  return {
+    // Scope seamless state by the raw account name so separate SWRUN users do not collide.
+    username: String(normalized.raw || normalized.canonical || '').toLowerCase(),
+    productType: String(getBodyValue(payload, 'ProductType') || ''),
+    gameType: String(getBodyValue(payload, 'GameType') || ''),
+    gpid: String(getBodyValue(payload, 'Gpid') || ''),
+  };
+};
 
 const buildTransferKey = (payload, transferCode) => {
   const scope = getScopeParts(payload);
@@ -848,6 +852,10 @@ const createSeamlessBet = ({ user, payload, transferCode, transactionId, amount,
     return_stake_history: {},
   };
 };
+
+const cloneSeamlessTxs = (txs = {}) => Object.fromEntries(
+  Object.entries(txs || {}).map(([id, tx]) => [String(id), tx ? { ...tx } : tx])
+);
 
 const saveSeamlessBet = async (client, transferKey, bet, payload, transferCode, transactionId) => {
   seamlessStateByTransfer.set(transferKey, bet);
@@ -4259,7 +4267,7 @@ app.post(['/Settle', '/settle'], async (req, res) => {
         status: existing.status,
         current_stake: Number(existing.current_stake || 0),
         settled_win_loss: Number(existing.settled_win_loss || 0),
-        txs: existing.txs || {},
+        txs: cloneSeamlessTxs(existing.txs),
       },
       txs: Object.fromEntries(
         Object.entries(existing.txs || {}).map(([id, tx]) => [
@@ -4331,7 +4339,7 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
     let netChange = 0;
     let resolvedCancelTxnId = transactionId;
     let canceledTxIds = [];
-    const previousTxs = existing.txs || {};
+    const previousTxs = cloneSeamlessTxs(existing.txs);
     const previousStatus = String(existing.status || 'running');
     const previousStake = Number(existing.current_stake || 0);
     const previousSettledWinLoss = Number(existing.settled_win_loss || 0);
@@ -4368,7 +4376,7 @@ app.post(['/Cancel', '/cancel'], async (req, res) => {
       [user.id, Math.abs(netChange), `SW-${transferCode}-CANCEL`, JSON.stringify({ action: 'seamless_cancel', net_change: netChange, transfer_code: transferCode, transaction_id: transactionId || null, is_cancel_all: isCancelAll })]
     );
 
-    const nextTxs = { ...(existing.txs || {}) };
+    const nextTxs = cloneSeamlessTxs(existing.txs);
     if (!isCancelAll && resolvedCancelTxnId && nextTxs[String(resolvedCancelTxnId)]) {
       nextTxs[String(resolvedCancelTxnId)] = {
         ...nextTxs[String(resolvedCancelTxnId)],
@@ -4465,13 +4473,42 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
     let nextBalance = currentBalance;
     let metadata = { action: 'seamless_rollback', win_loss: winLoss };
     const snapshot = existing.rollback_snapshot || null;
+    let restoredStatus = snapshot?.status || 'running';
+    let restoredStake = Number((snapshot?.current_stake ?? stake).toFixed(5));
+    let restoredSettledWinLoss = Number((snapshot?.settled_win_loss ?? 0).toFixed(5));
+    let restoredTxs = cloneSeamlessTxs(snapshot?.txs || existing.txs);
 
     if (existing.status === 'settled') {
       nextBalance = Number((currentBalance - winLoss).toFixed(5));
     } else if (existing.status === 'void' && existing.last_action === 'cancel') {
-      const reopenStake = Math.max(0, Number(existing.last_cancel_refund || 0));
+      const canceledTxIds = Array.isArray(snapshot?.canceled_tx_ids)
+        ? snapshot.canceled_tx_ids.map((id) => String(id))
+        : [];
+      const reopenStakeFromTxs = canceledTxIds.reduce((sum, id) => {
+        const txAmount = Number(snapshot?.txs?.[id]?.amount || existing.txs?.[id]?.amount || 0);
+        return sum + txAmount;
+      }, 0);
+      const reopenStake = Number(
+        (
+          reopenStakeFromTxs ||
+          Math.max(0, Number(snapshot?.current_stake || 0) - Number(existing.current_stake || 0))
+        ).toFixed(5)
+      );
       nextBalance = Number((currentBalance - reopenStake).toFixed(5));
       metadata = { action: 'seamless_rollback_cancel_reopen', stake: reopenStake };
+
+      // Rollback after cancel must reopen the bet to Running, even if cancel happened on a settled bet.
+      restoredStatus = 'running';
+      restoredSettledWinLoss = 0;
+
+      if (snapshot?.source_action === 'cancel' && snapshot?.status === 'settled') {
+        restoredTxs = Object.fromEntries(
+          Object.entries(restoredTxs).map(([id, tx]) => [
+            id,
+            tx ? { ...tx, status: 'running' } : tx,
+          ])
+        );
+      }
     } else {
       await client.query('ROLLBACK');
       return res.json(seamlessResponse({ AccountName: user.username, Balance: existing.balance_after, ErrorCode: 6, ErrorMessage: 'Cannot rollback current status' }));
@@ -4486,14 +4523,14 @@ app.post(['/Rollback', '/rollback'], async (req, res) => {
 
     await saveSeamlessBet(client, transferKey, {
       ...existing,
-      status: snapshot?.status || 'running',
-      current_stake: Number((snapshot?.current_stake ?? stake).toFixed(5)),
-      settled_win_loss: Number((snapshot?.settled_win_loss ?? 0).toFixed(5)),
+      status: restoredStatus,
+      current_stake: restoredStake,
+      settled_win_loss: restoredSettledWinLoss,
       rollback_count: Number(existing.rollback_count || 0) + 1,
       last_action: 'rollback',
       balance_after: nextBalance,
       rollback_snapshot: null,
-      txs: snapshot?.txs || existing.txs || {},
+      txs: restoredTxs,
     }, req.body, transferCode, existing.primary_transaction_id || findTransactionId(req.body));
 
     await client.query('COMMIT');
