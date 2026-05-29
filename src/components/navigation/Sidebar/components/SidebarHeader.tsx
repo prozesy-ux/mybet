@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useModal } from "@/context/ModalContext";
 import { LoginModal } from "@/components/auth/LoginModal";
 import { RegistrationModal } from "@/components/auth/RegistrationModal";
+import {
+  AUTH_OPEN_LOGIN_EVENT,
+  clearPendingCasinoGame,
+  readPendingCasinoGame,
+  requestCasinoLaunch,
+} from "@/services/casinoLaunchFlow";
 
 export const SidebarHeader = () => {
   const [loginOpen, setLoginOpen] = useState(false);
@@ -14,6 +20,35 @@ export const SidebarHeader = () => {
   const displayName = user?.name ?? "PROZESY LTD";
   const displayId = user?.id ?? "327183038";
 
+  useEffect(() => {
+    const openLogin = () => {
+      setRegOpen(false);
+      setLoginOpen(true);
+    };
+
+    window.addEventListener(AUTH_OPEN_LOGIN_EVENT, openLogin);
+    return () => {
+      window.removeEventListener(AUTH_OPEN_LOGIN_EVENT, openLogin);
+    };
+  }, []);
+
+  const processPendingCasinoGame = (isNewUser: boolean) => {
+    const pending = readPendingCasinoGame();
+    if (!pending) {
+      return false;
+    }
+
+    clearPendingCasinoGame();
+
+    if (isNewUser) {
+      openModal("deposit");
+      return true;
+    }
+
+    requestCasinoLaunch(pending);
+    return true;
+  };
+
   const handleLogin = async (payload: {
     email?: string;
     phone?: string;
@@ -22,7 +57,10 @@ export const SidebarHeader = () => {
     const result = await login(payload);
     if (result.ok) {
       setLoginOpen(false);
-      navigate("/dashboard");
+      const consumedPendingGame = processPendingCasinoGame(false);
+      if (!consumedPendingGame) {
+        navigate("/dashboard");
+      }
     }
     return result;
   };
@@ -35,7 +73,10 @@ export const SidebarHeader = () => {
     const result = await register(payload);
     if (result.ok) {
       setRegOpen(false);
-      navigate("/dashboard");
+      const consumedPendingGame = processPendingCasinoGame(true);
+      if (!consumedPendingGame) {
+        openModal("deposit");
+      }
     }
     return result;
   };

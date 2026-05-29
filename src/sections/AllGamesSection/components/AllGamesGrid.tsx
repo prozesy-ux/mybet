@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { userApi } from "@/services/userApi";
 import { API_BASE } from "@/services/apiBase";
+import { useAuth } from "@/context/AuthContext";
+import {
+  CASINO_LAUNCH_REQUEST_EVENT,
+  requestLoginModal,
+  savePendingCasinoGame,
+  type PendingCasinoGame,
+} from "@/services/casinoLaunchFlow";
 
 interface CasinoGame {
   id: number;
@@ -16,6 +23,7 @@ const cardInner =
   "absolute box-border caret-transparent outline-[3px] border overflow-hidden rounded-xl border-solid border-transparent inset-0 md:rounded-2xl after:accent-auto after:bg-gray-400/10 after:box-border after:caret-transparent after:text-gray-100 after:block after:text-base after:not-italic after:normal-nums after:font-normal after:tracking-[normal] after:leading-6 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-start after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-xl after:border-separate after:-inset-px after:font-inter after:md:rounded-2xl";
 
 export const AllGamesGrid = () => {
+  const { isAuthenticated } = useAuth();
   const [games, setGames] = useState<CasinoGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -39,6 +47,22 @@ export const AllGamesGrid = () => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    const onLaunchRequested = (event: Event) => {
+      const customEvent = event as CustomEvent<PendingCasinoGame>;
+      const game = customEvent.detail;
+      if (!game || typeof game.id !== "number") {
+        return;
+      }
+      void launchGame(game.id, game.title);
+    };
+
+    window.addEventListener(CASINO_LAUNCH_REQUEST_EVENT, onLaunchRequested as EventListener);
+    return () => {
+      window.removeEventListener(CASINO_LAUNCH_REQUEST_EVENT, onLaunchRequested as EventListener);
+    };
+  }, [isAuthenticated]);
 
   if (loading) {
     return (
@@ -74,6 +98,13 @@ export const AllGamesGrid = () => {
     if (launchingId === gameId) {
       return;
     }
+
+    if (!isAuthenticated) {
+      savePendingCasinoGame({ id: gameId, title: gameTitle });
+      requestLoginModal();
+      return;
+    }
+
     try {
       setLaunchingId(gameId);
       const result = await userApi.launchCasinoGame(gameId);
