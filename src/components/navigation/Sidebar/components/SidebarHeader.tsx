@@ -8,7 +8,6 @@ import {
   AUTH_OPEN_LOGIN_EVENT,
   consumePendingCasinoGame,
   readPendingCasinoGame,
-  requestCasinoLaunch,
 } from "@/services/casinoLaunchFlow";
 
 export const SidebarHeader = () => {
@@ -38,13 +37,7 @@ export const SidebarHeader = () => {
       return false;
     }
 
-    if (isNewUser) {
-      openModal("deposit");
-      return true;
-    }
-
-    consumePendingCasinoGame();
-    requestCasinoLaunch(pending);
+    openModal("deposit");
     return true;
   };
 
@@ -56,8 +49,7 @@ export const SidebarHeader = () => {
     const result = await login(payload);
     if (result.ok) {
       setLoginOpen(false);
-      const isNewUser = Number(result.user?.balance || 0) <= 0;
-      const consumedPendingGame = processPendingCasinoGame(isNewUser);
+      const consumedPendingGame = processPendingCasinoGame(true);
       if (!consumedPendingGame) {
         navigate("/dashboard");
       }
@@ -73,7 +65,7 @@ export const SidebarHeader = () => {
     const result = await register(payload);
     if (result.ok) {
       setRegOpen(false);
-      const consumedPendingGame = processPendingCasinoGame(Number(result.user?.balance || 0) <= 0);
+      const consumedPendingGame = processPendingCasinoGame(true);
       if (!consumedPendingGame) {
         openModal("deposit");
       }
