@@ -1982,8 +1982,9 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
-  const client = await getClient();
+  let client;
   try {
+    client = await getClient();
     await client.query('BEGIN');
 
     const duplicate = await client.query(
