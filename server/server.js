@@ -1781,34 +1781,48 @@ app.post('/api/auth/casino/launch/:id', requireUserAuth, async (req, res) => {
 const getSportsLaunchContext = (req) => {
   const requestedPortfolio = String(req.body?.portfolio || '').trim();
   const allowedPortfolios = new Set(['SportsBook', '568WinSportsbook']);
-  const portfolio = allowedPortfolios.has(requestedPortfolio) ? requestedPortfolio : 'SportsBook';
+  const primary = allowedPortfolios.has(requestedPortfolio) ? requestedPortfolio : 'SportsBook';
+  const portfolios = Array.from(new Set([primary, 'SportsBook', '568WinSportsbook']));
   const userAgent = String(req.headers['user-agent'] || '').toLowerCase();
   const device = /mobile|android|iphone|ipad/i.test(userAgent) ? 'm' : 'd';
-  return { portfolio, device };
+  return { portfolio: primary, portfolios, device };
 };
 
-const launchSportsbookForUsername = async ({ username, portfolio, device, lang }) => {
-  const launch = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
-    Username: username,
-    Portfolio: portfolio,
-    GpId: 0,
-    GameId: 0,
-    Device: device,
-    Lang: lang,
-  });
+const launchSportsbookForUsername = async ({ username, portfolios, device, lang }) => {
+  const attempts = [];
+  for (const portfolio of portfolios) {
+    const launch = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
+      Username: username,
+      Portfolio: portfolio,
+      GpId: 0,
+      GameId: 0,
+      Device: device,
+      Lang: lang,
+    });
 
-  const launchErrorId = Number(launch.data?.error?.id ?? -1);
-  if (launchErrorId !== 0 || !launch.data?.url) {
-    return {
-      ok: false,
-      error: String(launch.data?.error?.msg || 'Unable to open sportsbook'),
-      details: launch.data?.error || launch.data,
-    };
+    const launchErrorId = Number(launch.data?.error?.id ?? -1);
+    attempts.push({
+      portfolio,
+      error: launch.data?.error || null,
+      hasUrl: Boolean(launch.data?.url),
+    });
+
+    if (launchErrorId === 0 && launch.data?.url) {
+      const rawUrl = String(launch.data.url);
+      const url = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+      return { ok: true, url, portfolio, attempts };
+    }
   }
 
-  const rawUrl = String(launch.data.url);
-  const url = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
-  return { ok: true, url };
+  const firstError = attempts.find((a) => a.error && String(a.error.msg || '').trim())?.error;
+  return {
+    ok: false,
+    error: String(firstError?.msg || 'Unable to open sportsbook'),
+    details: {
+      error: firstError || null,
+      attempts,
+    },
+  };
 };
 
 app.post('/api/auth/sports/launch', requireUserAuth, async (req, res) => {
@@ -1818,11 +1832,11 @@ app.post('/api/auth/sports/launch', requireUserAuth, async (req, res) => {
       return res.status(500).json({ error: 'Production game API is not configured' });
     }
 
-    const { portfolio, device } = getSportsLaunchContext(req);
+    const { portfolio, portfolios, device } = getSportsLaunchContext(req);
     const seamlessUsername = await ensureExternalPlayer(req.authUser);
     const result = await launchSportsbookForUsername({
       username: seamlessUsername,
-      portfolio,
+      portfolios,
       device,
       lang: conf.lang,
     });
@@ -1851,7 +1865,7 @@ app.post('/api/sports/launch', async (req, res) => {
       return res.status(500).json({ error: 'SW_API_AGENT_USERNAME is required for guest sports launch' });
     }
 
-    const { portfolio, device } = getSportsLaunchContext(req);
+    const { portfolio, portfolios, device } = getSportsLaunchContext(req);
     const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '0').split(',')[0].trim();
     const ua = String(req.headers['user-agent'] || 'ua');
     const dayKey = new Date().toISOString().slice(0, 10);
@@ -1877,7 +1891,7 @@ app.post('/api/sports/launch', async (req, res) => {
 
     const result = await launchSportsbookForUsername({
       username: guestUsername,
-      portfolio,
+      portfolios,
       device,
       lang: conf.lang,
     });
