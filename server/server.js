@@ -885,12 +885,15 @@ const mapSeamlessStatus = (status) => {
 
 const mapUserRow = (row) => ({
   id: row.id,
+  username: row.username || null,
   name: row.full_name || row.username,
   email: row.email,
   phone: row.phone || '',
   country: row.country || 'Bangladesh',
   dateOfBirth: row.date_of_birth || '01/01/1990',
   balance: String(row.balance ?? '0'),
+  seamlessUsername: row.seamless_username || null,
+  playerAccountId: row.seamless_username || row.username || null,
   status: row.status,
   createdAt: row.created_at,
 });
