@@ -495,8 +495,9 @@ const syncLiveCasinoGames = async ({ removeLegacyRows = true } = {}) => {
     ? remote.data.seamlessGameProviderGames
     : [];
 
-  const client = await getClient();
+  let client;
   try {
+    client = await getClient();
     await client.query('BEGIN');
     await client.query('SET LOCAL statement_timeout = 0');
 
@@ -2016,10 +2017,18 @@ app.post('/api/auth/register', async (req, res) => {
       user: mapUserRow(row),
     });
   } catch (error) {
-    await client.query('ROLLBACK');
-    return res.status(500).json({ error: error.message });
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Register rollback failed:', rollbackError.message);
+      }
+    }
+    return res.status(500).json({ error: error.message || 'Registration failed' });
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 });
 
