@@ -2025,18 +2025,35 @@ app.post('/api/auth/register', async (req, res) => {
     );
 
     const row = inserted.rows[0];
-    // Require backoffice/external player registration during signup to avoid split-account state.
-    const seamlessUsername = await ensureExternalPlayer(row, client);
-    row.seamless_username = seamlessUsername;
+    let playerSync = { ok: true };
+    try {
+      // Try to create provider/backoffice player at signup time.
+      const seamlessUsername = await ensureExternalPlayer(row, client);
+      row.seamless_username = seamlessUsername;
+    } catch (playerError) {
+      const message = String(playerError?.message || 'Player registration failed');
+      if (/HTTP\s*403/i.test(message)) {
+        // Keep signup available when provider temporarily denies registration.
+        playerSync = {
+          ok: false,
+          pending: true,
+          reason: 'provider_forbidden',
+          message,
+        };
+      } else {
+        throw playerError;
+      }
+    }
 
     await client.query('COMMIT');
 
     const token = signUserToken(row.id);
     return res.status(201).json({
       ok: true,
-      message: 'Registration successful',
+      message: playerSync.ok ? 'Registration successful' : 'Registration successful, player sync pending',
       token,
       user: mapUserRow(row),
+      playerSync,
     });
   } catch (error) {
     if (client) {
