@@ -613,7 +613,7 @@ const normalizeExternalUsername = (userId, username) => {
   return `gpz_${userId}_${safe || 'player'}`.slice(0, 40);
 };
 
-const ensureExternalPlayer = async (authUser) => {
+const ensureExternalPlayer = async (authUser, client = null) => {
   const conf = externalGameApiConfig();
   if (!conf.agent) {
     throw new Error('SW_API_AGENT_USERNAME is required to auto-register players');
@@ -623,7 +623,8 @@ const ensureExternalPlayer = async (authUser) => {
   const seamlessUsername = existing || normalizeExternalUsername(authUser.id, authUser.username);
 
   if (!existing) {
-    await query(
+    await runDbQuery(
+      client,
       `UPDATE users
        SET seamless_username = $1
        WHERE id = $2`,
@@ -1976,12 +1977,16 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
+  const client = await getClient();
   try {
-    const duplicate = await query(
+    await client.query('BEGIN');
+
+    const duplicate = await client.query(
       `SELECT id FROM users WHERE LOWER(email) = $1 OR phone = $2`,
       [normalizedEmail, normalizedPhone]
     );
     if (duplicate.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Email or phone already registered' });
     }
 
@@ -1989,14 +1994,20 @@ app.post('/api/auth/register', async (req, res) => {
     const usernameBase = normalizedEmail.split('@')[0].replace(/[^a-z0-9_]/gi, '').toLowerCase() || 'player';
     const username = `${usernameBase}_${Date.now().toString().slice(-6)}`;
 
-    const inserted = await query(
+    const inserted = await client.query(
       `INSERT INTO users (username, full_name, email, phone, country, date_of_birth, password_hash, balance, status)
        VALUES ($1, $2, $3, $4, 'Bangladesh', '01/01/1990', $5, 0, 'active')
-       RETURNING id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at`,
+       RETURNING id, username, full_name, email, phone, country, date_of_birth, balance, status, created_at, seamless_username`,
       [username, username.toUpperCase(), normalizedEmail, normalizedPhone, passwordHash]
     );
 
     const row = inserted.rows[0];
+    // Require backoffice/external player registration during signup to avoid split-account state.
+    const seamlessUsername = await ensureExternalPlayer(row, client);
+    row.seamless_username = seamlessUsername;
+
+    await client.query('COMMIT');
+
     const token = signUserToken(row.id);
     return res.status(201).json({
       ok: true,
@@ -2005,7 +2016,10 @@ app.post('/api/auth/register', async (req, res) => {
       user: mapUserRow(row),
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     return res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
