@@ -644,7 +644,24 @@ const ensureExternalPlayer = async (authUser, client = null) => {
   const canIgnore = regErrorId === 0 || /exist|duplicate|already/i.test(regErrorMsg);
 
   if (!canIgnore) {
-    throw new Error(`Player registration failed: ${regErrorMsg || 'Unknown error'}`);
+    // Some upstream responses are ambiguous; probe login to confirm whether account is already usable.
+    const probe = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
+      Username: seamlessUsername,
+      Portfolio: 'SportsBook',
+      GpId: 0,
+      GameId: 0,
+      Device: 'd',
+      Lang: conf.lang,
+    });
+
+    const probeErrorId = Number(probe.data?.error?.id ?? -1);
+    const probeHasUrl = Boolean(probe.data?.url);
+    if (probeErrorId === 0 && probeHasUrl) {
+      return seamlessUsername;
+    }
+
+    const detail = regErrorMsg || String(register.data?.raw || '').trim() || `HTTP ${register.status}`;
+    throw new Error(`Player registration failed: ${detail}`);
   }
 
   return seamlessUsername;
