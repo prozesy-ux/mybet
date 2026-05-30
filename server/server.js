@@ -620,8 +620,31 @@ const ensureExternalPlayer = async (authUser, client = null) => {
     throw new Error('SW_API_AGENT_USERNAME is required to auto-register players');
   }
 
+  const probePlayerLogin = async (username) => {
+    const probe = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
+      Username: username,
+      Portfolio: 'SportsBook',
+      GpId: 0,
+      GameId: 0,
+      Device: 'd',
+      Lang: conf.lang,
+    });
+
+    return {
+      ok: Number(probe.data?.error?.id ?? -1) === 0 && Boolean(probe.data?.url),
+      data: probe.data,
+    };
+  };
+
   const existing = String(authUser.seamless_username || '').trim();
   const seamlessUsername = existing || normalizeExternalUsername(authUser.id, authUser.username);
+
+  if (existing) {
+    const probe = await probePlayerLogin(seamlessUsername);
+    if (probe.ok) {
+      return seamlessUsername;
+    }
+  }
 
   if (!existing) {
     await runDbQuery(
@@ -645,18 +668,8 @@ const ensureExternalPlayer = async (authUser, client = null) => {
 
   if (!canIgnore) {
     // Some upstream responses are ambiguous; probe login to confirm whether account is already usable.
-    const probe = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
-      Username: seamlessUsername,
-      Portfolio: 'SportsBook',
-      GpId: 0,
-      GameId: 0,
-      Device: 'd',
-      Lang: conf.lang,
-    });
-
-    const probeErrorId = Number(probe.data?.error?.id ?? -1);
-    const probeHasUrl = Boolean(probe.data?.url);
-    if (probeErrorId === 0 && probeHasUrl) {
+    const probe = await probePlayerLogin(seamlessUsername);
+    if (probe.ok) {
       return seamlessUsername;
     }
 
