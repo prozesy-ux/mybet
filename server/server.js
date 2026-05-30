@@ -639,11 +639,10 @@ const ensureExternalPlayer = async (authUser, client = null) => {
   const existing = String(authUser.seamless_username || '').trim();
   const seamlessUsername = existing || normalizeExternalUsername(authUser.id, authUser.username);
 
+  // Existing linked users should not be re-registered during launch flow.
+  // Re-register attempts can be forbidden by provider policy even when login is valid.
   if (existing) {
-    const probe = await probePlayerLogin(seamlessUsername);
-    if (probe.ok) {
-      return seamlessUsername;
-    }
+    return seamlessUsername;
   }
 
   if (!existing) {
