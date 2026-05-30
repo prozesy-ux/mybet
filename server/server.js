@@ -1226,8 +1226,9 @@ app.post('/api/payments/tkpay/callback/collection', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Missing reference id in callback payload' });
   }
 
-  const client = await getClient();
+  let client;
   try {
+    client = await getClient();
     await client.query('BEGIN');
 
     const txResult = await client.query(
