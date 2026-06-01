@@ -1,0 +1,11 @@
+const username='gpz_82_gpzesui17801637021_067';
+const key='WEB1000';
+const base='http://api.sweepslots.com';
+const hash='8f8c4e9f4ee8f147d68f76f83f17f99ddde470e8';
+const q = new URLSearchParams({username,key,lang:'en',homeurl:'https://gpzes.com/sports',cashierurl:'https://gpzes.com/dashboard'}).toString();
+const token = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(q+hash)).then(b=>Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''));
+const url = `${base}/player/v2/login.aspx?${q}&token=${token}`;
+const r=await fetch(url);
+const t=await r.text();
+console.log('direct-local-provider status',r.status);
+console.log(t.slice(0,400));

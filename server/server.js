@@ -412,20 +412,27 @@ const callExternalGameApi = async (endpointPath, payload = {}) => {
     throw new Error('External game API configuration is incomplete');
   }
 
-  const response = await fetch(`${conf.baseUrl}${endpointPath}`, {
+  const fullUrl = `${conf.baseUrl}${endpointPath}`;
+  const requestBody = {
+    ...payload,
+    CompanyKey: conf.companyKey,
+    ServerId: conf.serverId,
+  };
+
+  console.log(`[API_CALL] POST ${endpointPath} with payload keys: ${Object.keys(payload).join(', ')}`);
+
+  const response = await fetch(fullUrl, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      ...payload,
-      CompanyKey: conf.companyKey,
-      ServerId: conf.serverId,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const text = await response.text();
+  console.log(`[API_RESPONSE] Status: ${response.status}, Body length: ${text.length}, First 300 chars: ${text.substring(0, 300)}`);
+
   let data = {};
   try {
     data = JSON.parse(text);
@@ -1799,6 +1806,8 @@ const launchSportsbookForUsername = async ({ username, portfolios, device, lang 
       Device: device,
       Lang: lang,
     });
+
+    console.log(`[LAUNCH] Portfolio ${portfolio}: status=${launch.status}, data=${JSON.stringify(launch.data).substring(0, 200)}`);
 
     const launchErrorId = Number(launch.data?.error?.id ?? -1);
     attempts.push({
