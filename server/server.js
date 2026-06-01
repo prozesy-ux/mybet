@@ -1252,6 +1252,76 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
 });
 
+app.get('/api/debug/config', (req, res) => {
+  const conf = externalGameApiConfig();
+  res.json({
+    hasConfig: conf.ok,
+    baseUrl: conf.baseUrl,
+    companyKey: conf.companyKey ? '***' + conf.companyKey.slice(-4) : undefined,
+    serverId: conf.serverId,
+    agent: conf.agent,
+    lang: conf.lang,
+    env: {
+      SW_API_BASE_URL: process.env.SW_API_BASE_URL || 'NOT_SET',
+      SW_API_COMPANY_KEY: process.env.SW_API_COMPANY_KEY ? '***' + process.env.SW_API_COMPANY_KEY.slice(-4) : 'NOT_SET',
+      SW_API_SERVER_ID: process.env.SW_API_SERVER_ID || 'NOT_SET',
+      SW_API_AGENT_USERNAME: process.env.SW_API_AGENT_USERNAME || 'NOT_SET',
+      SW_API_LANG: process.env.SW_API_LANG || 'NOT_SET',
+    }
+  });
+});
+
+app.get('/api/debug/test-provider', async (req, res) => {
+  try {
+    const conf = externalGameApiConfig();
+    if (!conf.ok) {
+      return res.json({ error: 'Config not OK', conf });
+    }
+    
+    const testPayload = {
+      Username: 'debug_test_' + Date.now(),
+      Portfolio: 'SportsBook',
+      GpId: 0,
+      GameId: 0,
+      Device: 'd',
+      Lang: 'en',
+      CompanyKey: conf.companyKey,
+      ServerId: conf.serverId,
+    };
+    
+    console.log('[DEBUG_TEST] Payload:', JSON.stringify(testPayload, null, 2));
+    
+    const response = await fetch(`${conf.baseUrl}/web-root/restricted/player/v2/login.aspx`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(testPayload),
+    });
+    
+    const text = await response.text();
+    console.log('[DEBUG_TEST] Response Status:', response.status);
+    console.log('[DEBUG_TEST] Response Body:', text.substring(0, 500));
+    
+    let data = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { parseError: true, raw: text.substring(0, 500) };
+    }
+    
+    res.json({
+      status: response.status,
+      data,
+      rawLength: text.length,
+      endpoint: `${conf.baseUrl}/web-root/restricted/player/v2/login.aspx`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/payments/tkpay/callback/collection', async (req, res) => {
   if (!isTkpayIpAllowed(req)) {
     return res.status(403).json({ ok: false, error: 'IP not allowed' });
