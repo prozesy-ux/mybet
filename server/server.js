@@ -1288,6 +1288,7 @@ app.get('/api/debug/test-provider', async (req, res) => {
       Lang: 'en',
       CompanyKey: conf.companyKey,
       ServerId: conf.serverId,
+      Agent: conf.agent,
     };
     
     console.log('[DEBUG_TEST] Payload:', JSON.stringify(testPayload, null, 2));
@@ -1317,6 +1318,13 @@ app.get('/api/debug/test-provider', async (req, res) => {
       data,
       rawLength: text.length,
       endpoint: `${conf.baseUrl}/web-root/restricted/player/v2/login.aspx`,
+      payloadSent: {
+        Username: testPayload.Username,
+        Portfolio: testPayload.Portfolio,
+        Device: testPayload.Device,
+        Agent: conf.agent ? 'YES' : 'NO',
+        CompanyKey: conf.companyKey ? 'YES' : 'NO',
+      }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
