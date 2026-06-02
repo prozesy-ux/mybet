@@ -1866,7 +1866,7 @@ const getSportsLaunchContext = (req) => {
   return { portfolio: primary, portfolios, device };
 };
 
-const launchSportsbookForUsername = async ({ username, portfolios, device, lang }) => {
+const launchSportsbookForUsername = async ({ username, portfolios, device, lang, agent }) => {
   const attempts = [];
   for (const portfolio of portfolios) {
     const launch = await callExternalGameApi('/web-root/restricted/player/v2/login.aspx', {
@@ -1876,6 +1876,7 @@ const launchSportsbookForUsername = async ({ username, portfolios, device, lang 
       GameId: 0,
       Device: device,
       Lang: lang,
+      Agent: agent,
     });
 
     console.log(`[LAUNCH] Portfolio ${portfolio}: status=${launch.status}, data=${JSON.stringify(launch.data).substring(0, 200)}`);
@@ -1919,6 +1920,7 @@ app.post('/api/auth/sports/launch', requireUserAuth, async (req, res) => {
       portfolios,
       device,
       lang: conf.lang,
+      agent: conf.agent,
     });
 
     if (!result.ok) {
@@ -1974,6 +1976,7 @@ app.post('/api/sports/launch', async (req, res) => {
       portfolios,
       device,
       lang: conf.lang,
+      agent: conf.agent,
     });
 
     if (!result.ok) {
