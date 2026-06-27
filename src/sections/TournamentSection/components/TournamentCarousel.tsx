@@ -1,10 +1,21 @@
+import { useAuth } from "@/context/AuthContext";
+import { requestLoginModal } from "@/services/casinoLaunchFlow";
+
 export const TournamentCarousel = () => {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] w-full overflow-hidden">
       <div className="box-border caret-transparent flex outline-[3px] w-full">
         <div className="box-border caret-transparent basis-[33.3333%] shrink-0 min-h-[auto] min-w-[auto] outline-[3px] pr-2">
           <a
             href="#"
+            onClick={(event) => {
+              event.preventDefault();
+              if (!isAuthenticated) {
+                requestLoginModal();
+              }
+            }}
             className="relative text-white bg-zinc-900 box-border caret-transparent block min-w-[328px] outline-[3px] w-full border border-gray-400/10 overflow-hidden rounded-2xl border-solid"
           >
             <div className="absolute text-xs font-semibold bg-green-600 box-border caret-transparent tracking-[0.01px] leading-4 outline-[3px] z-[2] px-1.5 py-0.5 rounded-2xl left-4 top-4">
@@ -61,6 +72,12 @@ export const TournamentCarousel = () => {
             <div className="box-border caret-transparent gap-x-2 flex min-h-[auto] min-w-[auto] outline-[3px] gap-y-2">
               <a
                 href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (!isAuthenticated) {
+                    requestLoginModal();
+                  }
+                }}
                 className="relative text-white bg-zinc-900 box-border caret-transparent block min-h-[auto] min-w-[328px] outline-[3px] w-full border border-gray-400/10 overflow-hidden rounded-2xl border-solid"
               ></a>
               <a
@@ -137,6 +154,12 @@ export const TournamentCarousel = () => {
             <div className="box-border caret-transparent gap-x-2 flex min-h-[auto] min-w-[auto] outline-[3px] gap-y-2">
               <a
                 href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (!isAuthenticated) {
+                    requestLoginModal();
+                  }
+                }}
                 className="relative text-white bg-zinc-900 box-border caret-transparent block min-h-[auto] min-w-[328px] outline-[3px] w-full border border-gray-400/10 overflow-hidden rounded-2xl border-solid"
               ></a>
               <a

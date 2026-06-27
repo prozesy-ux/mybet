@@ -1,4 +1,9 @@
+import { useAuth } from "@/context/AuthContext";
+import { requestLoginModal } from "@/services/casinoLaunchFlow";
+
 export const RandomGameBanner = () => {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px]">
       <div className="relative box-border caret-transparent outline-[3px]">
@@ -30,6 +35,11 @@ export const RandomGameBanner = () => {
             </div>
             <button
               type="button"
+              onClick={() => {
+                if (!isAuthenticated) {
+                  requestLoginModal();
+                }
+              }}
               className="relative text-black text-sm font-semibold bg-transparent caret-transparent block leading-5 min-h-[auto] min-w-[auto] outline-[3px] text-center p-0 rounded-[10px]"
             >
               <div className="relative bg-white box-border caret-transparent h-9 outline-[3px] px-4 rounded-[10px] after:accent-auto after:box-border after:caret-transparent after:text-black after:block after:text-sm after:not-italic after:normal-nums after:font-semibold after:tracking-[normal] after:leading-5 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-center after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-[10px] after:border-separate after:inset-0 after:font-inter">
@@ -50,6 +60,12 @@ export const RandomGameBanner = () => {
             <div className="absolute box-border caret-transparent hidden outline-[3px] z-[3] left-2/4 bottom-3.5 md:bottom-3">
               <a
                 href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (!isAuthenticated) {
+                    requestLoginModal();
+                  }
+                }}
                 className="relative text-black text-sm font-semibold box-border caret-transparent inline-block leading-5 outline-[3px] rounded-[10px]"
               >
                 <div className="relative bg-white box-border caret-transparent h-9 outline-[3px] px-4 rounded-[10px] after:accent-auto after:box-border after:caret-transparent after:text-black after:block after:text-sm after:not-italic after:normal-nums after:font-semibold after:tracking-[normal] after:leading-5 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-start after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-[10px] after:border-separate after:inset-0 after:font-inter">
@@ -85,6 +101,12 @@ export const RandomGameBanner = () => {
                   <div className="box-border caret-transparent min-h-[auto] min-w-[auto] opacity-70 outline-[3px] pointer-events-none w-[104px] md:w-[138px]">
                     <a
                       href="#"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (!isAuthenticated) {
+                          requestLoginModal();
+                        }
+                      }}
                       className="box-border caret-transparent gap-x-2 flex flex-col outline-[3px] gap-y-2"
                     >
                       <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] pb-[133.33%]">
@@ -103,6 +125,12 @@ export const RandomGameBanner = () => {
                   <div className="box-border caret-transparent min-h-[auto] min-w-[auto] opacity-70 outline-[3px] pointer-events-none w-[104px] md:w-[138px]">
                     <a
                       href="#"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (!isAuthenticated) {
+                          requestLoginModal();
+                        }
+                      }}
                       className="box-border caret-transparent gap-x-2 flex flex-col outline-[3px] gap-y-2"
                     >
                       <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] pb-[133.33%]">
@@ -121,6 +149,12 @@ export const RandomGameBanner = () => {
                   <div className="box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] w-[104px] md:w-[138px]">
                     <a
                       href="#"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (!isAuthenticated) {
+                          requestLoginModal();
+                        }
+                      }}
                       className="box-border caret-transparent gap-x-2 flex flex-col outline-[3px] gap-y-2"
                     >
                       <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] pb-[133.33%]">
@@ -139,6 +173,12 @@ export const RandomGameBanner = () => {
                   <div className="box-border caret-transparent min-h-[auto] min-w-[auto] opacity-70 outline-[3px] pointer-events-none w-[104px] md:w-[138px]">
                     <a
                       href="#"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (!isAuthenticated) {
+                          requestLoginModal();
+                        }
+                      }}
                       className="box-border caret-transparent gap-x-2 flex flex-col outline-[3px] gap-y-2"
                     >
                       <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] pb-[133.33%]">

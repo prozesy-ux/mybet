@@ -1,4 +1,6 @@
 import { RefObject } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { requestLoginModal } from "@/services/casinoLaunchFlow";
 
 export type GameCarouselProps = {
   games: {
@@ -20,11 +22,19 @@ export type GameCarouselProps = {
 };
 
 export const GameCarousel = (props: GameCarouselProps) => {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div ref={props.scrollRef} className="box-border caret-transparent gap-x-2 flex min-h-[auto] min-w-[auto] outline-[3px] gap-y-3 overflow-auto -mx-4 -my-3 px-4 py-3 md:gap-x-4 md:gap-y-4 md:-mx-2 md:px-2">
       {props.games.map((game, index) => (
         <a
           href={game.href}
+          onClick={(event) => {
+            if (!isAuthenticated) {
+              event.preventDefault();
+              requestLoginModal();
+            }
+          }}
           className="box-border caret-transparent gap-x-2 flex flex-col shrink-0 min-h-[auto] min-w-[auto] outline-[3px] gap-y-2 snap-start w-[calc(33.3333%_-_5.33333px)] scroll-m-4 md:w-[calc(16.6667%_-_13.3333px)] md:scroll-m-2"
           key={index}
         >

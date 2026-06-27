@@ -1,4 +1,9 @@
+import { useAuth } from "@/context/AuthContext";
+import { requestLoginModal } from "@/services/casinoLaunchFlow";
+
 export const FeaturedGameCard = () => {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="box-border caret-transparent grid col-end-[b] col-start-[b] row-end-[b] row-start-[b] min-h-[164px] min-w-[auto] outline-[3px]">
       <div className="relative bg-blue-600 box-border caret-transparent gap-x-1 flex min-h-[164px] min-w-[auto] outline-[3px] gap-y-1 w-full overflow-hidden pl-4 pr-8 pt-4 rounded-[20px] md:gap-x-0 md:gap-y-0 md:pr-0 md:rounded-3xl">
@@ -35,6 +40,12 @@ export const FeaturedGameCard = () => {
             </div>
             <a
               href="#"
+              onClick={(event) => {
+                event.preventDefault();
+                if (!isAuthenticated) {
+                  requestLoginModal();
+                }
+              }}
               className="relative text-black text-sm font-semibold box-border caret-transparent block leading-5 min-h-[auto] min-w-[auto] outline-[3px] w-fit rounded-[10px]"
             >
               <div className="relative bg-white box-border caret-transparent h-9 outline-[3px] px-4 rounded-[10px] after:accent-auto after:box-border after:caret-transparent after:text-black after:block after:text-sm after:not-italic after:normal-nums after:font-semibold after:tracking-[normal] after:leading-5 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-start after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-[10px] after:border-separate after:inset-0 after:font-inter">
@@ -50,6 +61,12 @@ export const FeaturedGameCard = () => {
         <div className="relative box-border caret-transparent flex flex-col grow justify-end min-h-[auto] min-w-[auto] outline-[3px]">
           <a
             href="#"
+            onClick={(event) => {
+              event.preventDefault();
+              if (!isAuthenticated) {
+                requestLoginModal();
+              }
+            }}
             className="aspect-[0.75_/_1] box-border caret-transparent gap-x-2 flex flex-col h-[155px] min-h-[auto] min-w-[auto] outline-[3px] gap-y-2 translate-y-1 ml-auto mr-1.5 rounded-t-[20px] md:h-[97%] md:mr-auto"
           >
             <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] pb-[133.33%]">
@@ -66,6 +83,12 @@ export const FeaturedGameCard = () => {
           </a>
           <a
             href="#"
+            onClick={(event) => {
+              event.preventDefault();
+              if (!isAuthenticated) {
+                requestLoginModal();
+              }
+            }}
             className="relative text-black text-sm font-semibold box-border caret-transparent hidden leading-5 outline-[3px] w-full rounded-[10px]"
           >
             <div className="relative bg-white box-border caret-transparent h-9 outline-[3px] px-4 rounded-[10px] after:accent-auto after:box-border after:caret-transparent after:text-black after:block after:text-sm after:not-italic after:normal-nums after:font-semibold after:tracking-[normal] after:leading-5 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-start after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-[10px] after:border-separate after:inset-0 after:font-inter">
