@@ -30,7 +30,7 @@ const tabs = [
 
 export const HeaderNav = () => {
   return (
-    <nav className="items-center bg-gray-400/10 box-border caret-transparent gap-x-[3px] flex min-h-[auto] min-w-[auto] outline-[3px] gap-y-[3px] p-0.5 rounded-[14px]">
+    <nav className="hidden items-center bg-gray-400/10 box-border caret-transparent gap-x-[3px] min-h-[auto] min-w-[auto] outline-[3px] gap-y-[3px] p-0.5 rounded-[14px] md:flex">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}

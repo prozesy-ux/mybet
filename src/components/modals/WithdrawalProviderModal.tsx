@@ -57,10 +57,14 @@ export const WithdrawalProviderModal = () => {
 
   return (
     <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.8)" }}
+      className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+      onClick={closeModal}
     >
-      <div className="bg-white rounded-2xl w-full max-w-[380px] mx-4 overflow-hidden shadow-2xl">
+      <div
+        className="bg-white rounded-t-[24px] w-full max-w-[430px] overflow-y-auto shadow-2xl max-h-[96dvh] pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:rounded-2xl sm:pb-0 sm:max-h-[92vh]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-[#d0d5de] sm:hidden" />
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-6">
           <button

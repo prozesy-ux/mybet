@@ -12,8 +12,8 @@ export const HeaderActions = () => {
   }
 
   return (
-    <div className="items-center box-border caret-transparent gap-x-3 flex grow justify-end min-h-[auto] outline-[3px] gap-y-3 ml-auto md:gap-x-4 md:gap-y-4">
-      <div className="items-center box-border caret-transparent gap-x-3 flex grow min-h-[auto] outline-[3px] gap-y-3 md:gap-x-4 md:gap-y-4">
+    <div className="items-center box-border caret-transparent gap-x-2 flex grow justify-end min-h-[auto] outline-[3px] gap-y-2 ml-auto md:gap-x-4 md:gap-y-4">
+      <div className="items-center box-border caret-transparent gap-x-2 flex grow min-h-[auto] outline-[3px] gap-y-2 md:gap-x-4 md:gap-y-4">
         <div className="text-sm font-semibold box-border caret-transparent flex flex-col grow leading-5 min-h-[auto] outline-[3px]">
           <div className="box-border caret-transparent max-w-full min-h-[auto] outline-[3px] text-end">
             <button
@@ -41,7 +41,7 @@ export const HeaderActions = () => {
           onClick={() => openModal("deposit")}
           className="relative text-white text-sm font-semibold bg-transparent caret-transparent block leading-5 min-h-[auto] min-w-[auto] outline-[3px] text-center p-0 rounded-xl"
         >
-          <div className="relative bg-green-600 box-border caret-transparent h-11 outline-[3px] px-5 rounded-xl after:accent-auto after:box-border after:caret-transparent after:text-white after:block after:text-sm after:not-italic after:normal-nums after:font-semibold after:tracking-[normal] after:leading-5 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-center after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-xl after:border-separate after:inset-0 after:font-inter">
+          <div className="relative bg-green-600 box-border caret-transparent h-10 outline-[3px] px-3 rounded-xl after:accent-auto after:box-border after:caret-transparent after:text-white after:block after:text-sm after:not-italic after:normal-nums after:font-semibold after:tracking-[normal] after:leading-5 after:list-outside after:list-disc after:[mask-clip:content-box,border-box] after:[mask-composite:exclude,add] after:[mask-image:linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px),linear-gradient(rgb(0,0,0)_0px,rgb(0,0,0)_0px)] after:[mask-mode:match-source,match-source] after:[mask-origin:content-box,border-box] after:[mask-position:0px_0px,0px_0px] after:[mask-repeat:repeat,repeat] after:[mask-size:auto,auto] after:outline-[3px] after:pointer-events-none after:absolute after:text-center after:no-underline after:indent-[0px] after:normal-case after:visible after:p-px after:rounded-xl after:border-separate after:inset-0 after:font-inter md:h-11 md:px-5">
             <div className="items-center box-border caret-transparent gap-x-2 flex h-full justify-center outline-[3px] gap-y-2 text-nowrap">
               <div className="box-border caret-transparent contents outline-[3px] text-nowrap">
                 Deposit

@@ -61,10 +61,14 @@ export const WithdrawalModal = () => {
 
   return (
     <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+      onClick={closeModal}
     >
-      <div className="bg-white rounded-[24px] w-full max-w-[400px] mx-4 shadow-2xl font-inter">
+      <div
+        className="bg-white rounded-t-[24px] w-full max-w-[430px] shadow-2xl font-inter max-h-[96dvh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:rounded-[24px] sm:pb-0 sm:max-h-[92vh]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-[#d0d5de] sm:hidden" />
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <h2 className="text-[22px] font-bold text-[#141415]">Withdrawal</h2>

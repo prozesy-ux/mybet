@@ -13,7 +13,15 @@ interface LoginModalProps {
   onRegisterClick?: () => void;
 }
 
-const SOCIAL_BUTTONS = ["G", "VK", "✈", "@", "Я", "OK", "🎮"];
+const SOCIAL_BUTTONS = [
+  { label: "Google", icon: "https://developers.google.com/identity/images/g-logo.png" },
+  { label: "Facebook", icon: "https://cdn.simpleicons.org/facebook/1877F2" },
+  { label: "Telegram", icon: "https://cdn.simpleicons.org/telegram/26A5E4" },
+  { label: "Apple", icon: "https://cdn.simpleicons.org/apple/141415" },
+  { label: "X", icon: "https://cdn.simpleicons.org/x/141415" },
+  { label: "VK", icon: "https://cdn.simpleicons.org/vk/0077FF" },
+  { label: "Discord", icon: "https://cdn.simpleicons.org/discord/5865F2" },
+];
 
 export const LoginModal = ({
   isOpen,
@@ -92,13 +100,14 @@ export const LoginModal = ({
       />
 
       <div
-        className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 p-1"
+        className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
         onClick={handleClose}
       >
       <div
-        className="relative w-full max-w-[398px] rounded-[22px] bg-[#f2f3f5] px-5 pt-4 pb-6 shadow-2xl font-inter"
+        className="relative w-full max-w-[430px] rounded-t-[24px] bg-[#f2f3f5] px-5 pt-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] font-inter shadow-2xl max-h-[96dvh] overflow-y-auto sm:rounded-[22px] sm:pb-6 sm:max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-[#d0d5de] sm:hidden" />
         <button
           type="button"
           onClick={handleClose}
@@ -225,14 +234,19 @@ export const LoginModal = ({
           </div>
 
           <div className="flex flex-wrap justify-center gap-2">
-            {SOCIAL_BUTTONS.map((label) => (
+            {SOCIAL_BUTTONS.map((provider) => (
               <button
-                key={label}
+                key={provider.label}
                 type="button"
-                aria-label={label}
+                aria-label={`Continue with ${provider.label}`}
                 className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-[#e6e7eb] text-[#141415] text-[18px] leading-none font-semibold"
               >
-                {label}
+                <img
+                  src={provider.icon}
+                  alt={provider.label}
+                  className="h-5 w-5 object-contain"
+                  loading="lazy"
+                />
               </button>
             ))}
           </div>

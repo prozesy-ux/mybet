@@ -6,6 +6,7 @@ import { SeoContent } from "@/sections/SeoContent";
 import { ModalProvider } from "@/context/ModalContext";
 import { useAuth } from "@/context/AuthContext";
 import { ModalOrchestrator } from "@/components/modals/ModalOrchestrator";
+import { MobileBottomNav } from "@/components/navigation/MobileBottomNav";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { PageLayout } from "@/sections/PageLayout";
 import { BlogPage } from "@/sections/BlogPage";
@@ -22,6 +23,7 @@ const HomePage = () => {
   return (
     <ModalProvider>
     <ModalOrchestrator />
+    <MobileBottomNav />
     <div className="text-black text-base not-italic normal-nums font-normal accent-auto bg-neutral-900 box-border caret-transparent block tracking-[normal] leading-6 list-outside list-disc outline-[3px] overflow-x-hidden overflow-y-auto pointer-events-auto text-start indent-[0px] normal-case visible border-separate font-inter">
       <img
         src="https://c.animaapp.com/mp2q7d7w2xcH7p/assets/icon-1.svg"
@@ -34,7 +36,7 @@ const HomePage = () => {
           <div className="box-border caret-transparent contents outline-[3px]">
             <div className="text-gray-100 bg-neutral-900 box-border caret-transparent flex outline-[3px]">
               <Sidebar />
-              <div className="box-border caret-transparent flex flex-col grow min-h-[auto] outline-[3px]">
+              <div className="box-border caret-transparent flex flex-col grow min-h-[auto] outline-[3px] pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-0">
                 <div className="box-border caret-transparent flex flex-col grow min-h-[auto] outline-[3px]">
                   <Header />
                   <MainContent />
@@ -63,6 +65,7 @@ const HomePage = () => {
 const DashboardPage = () => {
   return (
     <ModalProvider>
+      <MobileBottomNav />
       <div className="text-black text-base not-italic normal-nums font-normal accent-auto bg-neutral-900 box-border caret-transparent block tracking-[normal] leading-6 list-outside list-disc outline-[3px] overflow-x-hidden overflow-y-auto pointer-events-auto text-start indent-[0px] normal-case visible border-separate font-inter">
         <ModalOrchestrator />
         <img
@@ -76,7 +79,7 @@ const DashboardPage = () => {
             <div className="box-border caret-transparent contents outline-[3px]">
               <div className="text-gray-100 bg-neutral-900 box-border caret-transparent flex outline-[3px]">
                 <Sidebar />
-                <div className="box-border caret-transparent flex flex-col grow min-h-[auto] outline-[3px]">
+                <div className="box-border caret-transparent flex flex-col grow min-h-[auto] outline-[3px] pb-[calc(env(safe-area-inset-bottom)+72px)] md:pb-0">
                   <div className="box-border caret-transparent flex flex-col grow min-h-[auto] outline-[3px]">
                     <Header />
                     <MainContent />

@@ -14,8 +14,10 @@ export const MainContent = () => {
         <div className="static box-border caret-transparent gap-x-2 flex flex-col-reverse h-full justify-start outline-[3px] gap-y-2 pt-0 pb-[68px] px-2 md:absolute md:flex-col md:h-auto md:pl-6 md:pr-0 md:pt-3 md:pb-0"></div>
       </div>
 
-      <div className="box-border caret-transparent gap-x-6 flex flex-col max-w-[1640px] outline-[3px] gap-y-6 w-full mx-auto pt-3 pb-6 px-4 md:gap-x-8 md:gap-y-8 md:pt-6 md:pb-8 md:px-12">
-        <CategoryTabs />
+      <div className="box-border caret-transparent gap-x-6 flex flex-col max-w-[420px] outline-[3px] gap-y-5 w-full mx-auto pt-3 pb-20 px-3 md:gap-x-8 md:max-w-[1640px] md:gap-y-8 md:pt-6 md:pb-8 md:px-12">
+        <div className="hidden md:block">
+          <CategoryTabs />
+        </div>
         <HeroSection />
         <SearchAndFilters />
         <JackpotSection />

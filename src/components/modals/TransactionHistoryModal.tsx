@@ -77,10 +77,14 @@ export const TransactionHistoryModal = () => {
 
   return (
     <div
-      className="fixed inset-0 z-[2000] flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+      onClick={closeModal}
     >
-      <div className="bg-white rounded-[24px] w-full max-w-[400px] mx-4 shadow-2xl font-inter flex flex-col max-h-[90vh]">
+      <div
+        className="bg-white rounded-t-[24px] w-full max-w-[430px] shadow-2xl font-inter flex flex-col max-h-[96dvh] pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:rounded-[24px] sm:max-h-[92vh] sm:pb-0"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-[#d0d5de] sm:hidden" />
         {/* Header */}
         <div className="flex items-center justify-end px-5 pt-4 pb-2 shrink-0">
           <button

@@ -160,7 +160,7 @@ export const BlogPage = () => {
   const [activeCategory, setActiveCategory] = useState("All articles");
 
   return (
-    <div className="w-full max-w-[1640px] mx-auto px-4 md:px-12 py-6 md:py-8">
+    <div className="w-full max-w-[420px] md:max-w-[1640px] mx-auto px-3 md:px-12 py-4 md:py-8">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-[#f0f2f5] text-2xl md:text-3xl font-bold leading-tight mb-1">Blog</h1>

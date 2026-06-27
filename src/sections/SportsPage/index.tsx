@@ -33,8 +33,8 @@ export const SportsPage = () => {
 
   return (
     <div className="h-full w-full bg-[#141415]">
-      <div className="mx-auto flex h-full w-full max-w-[1640px] flex-col gap-3 px-2 py-2 md:px-4 md:py-3">
-        <div className="flex items-center justify-between rounded-xl border border-[#2b2d30] bg-[#1b1c1f] px-3 py-2">
+      <div className="mx-auto flex h-full w-full max-w-[420px] md:max-w-[1640px] flex-col gap-3 px-3 py-2 md:px-4 md:py-3">
+        <div className="flex flex-col gap-2 rounded-xl border border-[#2b2d30] bg-[#1b1c1f] px-3 py-2 md:flex-row md:items-center md:justify-between">
           <div className="text-xs text-[#a7abb3] md:text-sm">
             {loading
                 ? "Loading live sports provider..."
@@ -44,11 +44,11 @@ export const SportsPage = () => {
                     ? "Live sports provider loaded with user wallet"
                     : "Live sports provider loaded in guest mode"}
           </div>
-          <div className="flex gap-2">
+          <div className="flex w-full gap-2 md:w-auto">
             <select
               value={portfolio}
               onChange={(e) => setPortfolio(e.target.value as "SportsBook" | "568WinSportsbook")}
-              className="rounded-md border border-[#32353a] bg-[#101113] px-2 py-1 text-xs text-[#d0d5dd] outline-none"
+              className="w-full rounded-md border border-[#32353a] bg-[#101113] px-2 py-1 text-xs text-[#d0d5dd] outline-none md:w-auto"
             >
               <option value="SportsBook">SportsBook</option>
               <option value="568WinSportsbook">568WinSportsbook</option>

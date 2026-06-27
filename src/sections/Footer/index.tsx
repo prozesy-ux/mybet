@@ -6,14 +6,14 @@ import { FooterLinks } from "@/sections/Footer/components/FooterLinks";
 export const Footer = () => {
   return (
     <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px]">
-      <div className="relative box-border caret-transparent max-w-[1640px] outline-[3px] w-full mx-auto px-12 py-10">
-        <div className="relative box-border caret-transparent gap-x-10 grid [grid-template-areas:'headRow_headRow_headRow''support_support_support''navigation_._appBanner''bottom_bottom_bottom'] grid-cols-[430px_auto_548px] grid-rows-[auto_auto_auto_auto] max-w-full outline-[3px] gap-y-10">
+      <div className="relative box-border caret-transparent max-w-[420px] outline-[3px] w-full mx-auto px-3 py-6 md:max-w-[1640px] md:px-12 md:py-10">
+        <div className="relative box-border caret-transparent flex flex-col gap-6 max-w-full outline-[3px] md:gap-x-10 md:grid md:[grid-template-areas:'headRow_headRow_headRow''support_support_support''navigation_._appBanner''bottom_bottom_bottom'] md:grid-cols-[430px_auto_548px] md:grid-rows-[auto_auto_auto_auto] md:gap-y-10">
           <FooterTop />
-          <div className="items-center box-border caret-transparent gap-x-4 flex col-end-[headRow] col-start-[headRow] row-end-[headRow] row-start-[headRow] min-h-[auto] min-w-[auto] outline-[3px] gap-y-4">
+          <div className="items-center box-border caret-transparent gap-x-3 flex min-h-[auto] min-w-[auto] outline-[3px] gap-y-3 md:gap-x-4 md:col-end-[headRow] md:col-start-[headRow] md:row-end-[headRow] md:row-start-[headRow] md:gap-y-4">
             <img
-              src="https://c.animaapp.com/mp2qv90eAQQ9j2/assets/icon-38.svg"
-              alt="Icon"
-              className="aspect-[107_/_36] box-border caret-transparent h-9 outline-[3px] align-baseline"
+              src="https://upload.wikimedia.org/wikipedia/en/9/9e/1win_official_logo.png"
+              alt="1win logo"
+              className="aspect-[107_/_36] box-border caret-transparent h-7 max-w-[108px] object-contain outline-[3px] align-baseline md:h-9 md:max-w-none"
             />
             <div className="bg-gray-400/10 box-border caret-transparent grow h-px min-h-[auto] min-w-[auto] outline-[3px]"></div>
             <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px]">

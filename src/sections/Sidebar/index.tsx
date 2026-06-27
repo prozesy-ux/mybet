@@ -4,7 +4,7 @@ import { SidebarFooter } from "@/sections/Sidebar/components/SidebarFooter";
 
 export const Sidebar = () => {
   return (
-    <div className="relative box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] z-[131]">
+    <div className="relative hidden box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] z-[131] md:block">
       <div className="box-border caret-transparent outline-[3px]">
         <div className="box-border caret-transparent outline-[3px] w-[280px]"></div>
         <div className="fixed bg-zinc-900 box-border caret-transparent h-[1000px] outline-[3px] w-[280px] left-0 inset-y-0"></div>

@@ -44,11 +44,12 @@ export const ChooseCurrencyModal = ({ isOpen, onClose, onSelect }: ChooseCurrenc
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-black/60 p-1" onClick={onClose}>
+    <div className="fixed inset-0 z-[2200] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" onClick={onClose}>
       <div
-        className="relative w-full max-w-[398px] rounded-[22px] bg-[#f2f3f5] px-5 pt-4 pb-3 shadow-2xl font-inter max-h-[95vh] overflow-hidden"
+        className="relative w-full max-w-[430px] rounded-t-[24px] bg-[#f2f3f5] px-5 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-2xl font-inter max-h-[96dvh] overflow-hidden sm:rounded-[22px] sm:pb-3 sm:max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-[#d0d5de] sm:hidden" />
         <button
           type="button"
           onClick={onClose}

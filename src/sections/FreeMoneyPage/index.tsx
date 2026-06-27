@@ -5,10 +5,7 @@ import { RewardsSection } from "@/sections/FreeMoneyPage/components/RewardsSecti
 export const FreeMoneyPage = () => {
   return (
     <div className="box-border caret-transparent grow min-h-[940px] min-w-[auto] outline-[3px] md:min-h-[932px]">
-      <div className="fixed box-border caret-transparent outline-[3px] pointer-events-none w-full z-[102] left-0 top-auto bottom-0 md:sticky md:top-0 md:bottom-auto">
-        <div className="static box-border caret-transparent gap-x-2 flex flex-col-reverse h-full justify-start outline-[3px] gap-y-2 pt-0 pb-[68px] px-2 md:absolute md:flex-col md:h-auto md:pl-6 md:pr-0 md:pt-3 md:pb-0"></div>
-      </div>
-      <div className="box-border caret-transparent flex flex-col max-w-none outline-[3px] mx-auto pt-3 pb-6 px-4 md:max-w-[718px] md:pt-6 md:pb-8 md:px-0">
+      <div className="box-border caret-transparent flex flex-col max-w-[420px] outline-[3px] mx-auto pt-3 pb-6 px-3 md:max-w-[718px] md:pt-6 md:pb-8 md:px-0">
         <div className="box-border caret-transparent gap-x-2 flex flex-col min-h-[auto] min-w-[auto] outline-[3px] gap-y-2 mb-1 md:gap-x-3 md:gap-y-3 md:mb-6">
           <div className="items-center box-border caret-transparent flex justify-between min-h-[auto] min-w-[auto] outline-[3px]">
             <div className="items-start box-border caret-transparent gap-x-1 flex flex-col min-h-[auto] min-w-[auto] outline-[3px] gap-y-1">
@@ -31,7 +28,7 @@ export const FreeMoneyPage = () => {
             </div>
             <div className="absolute box-border caret-transparent h-full outline-[3px] pointer-events-none z-auto overflow-hidden rounded-r-[20px] right-0 bottom-0 md:h-auto md:right-[-35px] md:z-[2] md:rounded-r-none">
               <picture className="box-border caret-transparent contents outline-[3px]">
-                <img className="box-border caret-transparent outline-[3px] align-baseline w-[490px]" />
+                <img className="box-border caret-transparent outline-[3px] align-baseline w-[220px] md:w-[490px]" />
               </picture>
             </div>
             <div className="relative box-border caret-transparent outline-[3px]">
@@ -121,7 +118,7 @@ export const FreeMoneyPage = () => {
               </picture>
             </div>
             <picture className="box-border caret-transparent contents outline-[3px]">
-              <img className="absolute box-border caret-transparent outline-[3px] pointer-events-none align-baseline w-[718px] -right-2 top-[11px] bottom-auto md:w-[430px] md:right-0 md:top-auto md:bottom-0" />
+              <img className="absolute box-border caret-transparent outline-[3px] pointer-events-none align-baseline w-[260px] -right-2 top-[11px] bottom-auto md:w-[430px] md:right-0 md:top-auto md:bottom-0" />
             </picture>
             <div className="relative box-border caret-transparent outline-[3px]">
               <h2 className="text-white text-[22px] font-semibold box-border caret-transparent tracking-[-0.4px] leading-[26px] outline-[3px] w-[min(300px,60%)] md:text-[28px] md:tracking-[-0.59px] md:leading-8 md:w-[400px]">
@@ -189,7 +186,7 @@ export const FreeMoneyPage = () => {
           <div className="relative bg-purple-600 bg-[radial-gradient(85.75%_94.45%_at_105.64%_-12.12%,rgba(255,255,255,0.7)_0%,rgba(255,255,255,0)_100%),none] bg-size-[auto,auto] box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] w-full bg-[position:0%,0%_0%,0%] p-4 scroll-mt-20 rounded-[20px] md:p-10 md:rounded-[32px]">
             <div className="absolute box-border caret-transparent outline-[3px] pointer-events-none overflow-hidden rounded-[20px] -right-px top-auto bottom-0 md:rounded-[32px] md:-top-2">
               <picture className="box-border caret-transparent contents outline-[3px]">
-                <img className="box-border caret-transparent outline-[3px] align-baseline w-[480px]" />
+                <img className="box-border caret-transparent outline-[3px] align-baseline w-[220px] md:w-[480px]" />
               </picture>
             </div>
             <div className="relative box-border caret-transparent outline-[3px]">
@@ -405,7 +402,7 @@ export const FreeMoneyPage = () => {
           </div>
           <div id="bonus-code" className="relative text-white bg-violet-900 bg-[radial-gradient(131.88%_137.73%_at_133.54%_-71.43%,rgba(255,255,255,0.7)_0%,rgba(255,255,255,0)_100%),none] bg-size-[auto,auto] box-border caret-transparent min-h-[auto] min-w-[auto] outline-[3px] w-full overflow-clip bg-[position:0%,0%_0%,0%] p-5 scroll-mt-20 rounded-[20px] md:p-10 md:rounded-[32px]">
             <picture className="box-border caret-transparent contents outline-[3px]">
-              <img className="absolute box-border caret-transparent object-cover outline-[3px] pointer-events-none align-baseline w-[420px] right-0 top-0 md:right-[-60px]" />
+              <img className="absolute box-border caret-transparent object-cover outline-[3px] pointer-events-none align-baseline w-[220px] right-0 top-0 md:w-[420px] md:right-[-60px]" />
             </picture>
             <div className="relative box-border caret-transparent outline-[3px]">
               <h2 className="text-[22px] font-semibold box-border caret-transparent tracking-[-0.4px] leading-[26px] outline-[3px] w-3/5 md:text-[28px] md:tracking-[-0.59px] md:leading-8 md:w-[300px]">

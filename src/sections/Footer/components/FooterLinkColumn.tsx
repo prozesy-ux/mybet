@@ -1,3 +1,6 @@
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
+
 export type FooterLinkColumnProps = {
   title: string;
   containerVariant: string;
@@ -10,14 +13,26 @@ export type FooterLinkColumnProps = {
 };
 
 export const FooterLinkColumn = (props: FooterLinkColumnProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <div
       className={`box-border caret-transparent flex flex-col min-h-[auto] min-w-[auto] outline-[3px] ${props.containerVariant}`}
     >
-      <span className="text-base font-semibold box-border caret-transparent block tracking-[-0.12px] leading-[22px] min-h-[auto] min-w-[auto] outline-[3px] md:text-xl md:tracking-[-0.33px] md:leading-6">
-        {props.title}
-      </span>
-      <div className="box-border caret-transparent grid grid-rows-[1fr] min-h-[auto] min-w-[auto] outline-[3px] w-auto md:w-max">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between py-1 text-left md:cursor-default"
+      >
+        <span className="text-base font-semibold box-border caret-transparent block tracking-[-0.12px] leading-[22px] min-h-[auto] min-w-[auto] outline-[3px] md:text-xl md:tracking-[-0.33px] md:leading-6">
+          {props.title}
+        </span>
+        <ChevronDown
+          size={18}
+          className={`text-[#97a0af] transition-transform md:hidden ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+      <div className={`${isOpen ? "grid" : "hidden"} box-border caret-transparent grid-rows-[1fr] min-h-[auto] min-w-[auto] outline-[3px] w-auto md:grid md:w-max`}>
         <div className="box-border caret-transparent gap-x-[normal] block min-h-[auto] min-w-[auto] outline-[3px] gap-y-[normal] overflow-hidden md:gap-x-10 md:flex md:gap-y-10">
           {props.columns.map((column, columnIndex) => (
             <div
